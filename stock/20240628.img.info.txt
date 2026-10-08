@@ -1,0 +1,2 @@
+-rwxrwxrwx 1 agent agent 438304768 Oct 11  2025 /mnt/c/distr/soft/r3xclone/20240628.img
+53ba586a5f3669a1b0e007b4507e834bcc9bc2b3321c32157d020570f0ea02b8  /mnt/c/distr/soft/r3xclone/20240628.img

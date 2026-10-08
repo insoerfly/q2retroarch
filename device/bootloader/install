@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0
+# A13_4C: install u-boot-with-spl and the board script.bin
+cp -av u-boot-sunxi-with-spl.bin $INSTALL/usr/share/bootloader/ 2>/dev/null || true
+if [ -f "$PKG_DIR/script.bin" ]; then
+  cp -av "$PKG_DIR/script.bin" $INSTALL/usr/share/bootloader/script.bin
+fi
+if [ -f "$PKG_DIR/scripts/boot.scr" ]; then
+  cp -av "$PKG_DIR/scripts/boot.scr" $INSTALL/usr/share/bootloader/boot.scr
+fi

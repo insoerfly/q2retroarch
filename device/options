@@ -1,0 +1,56 @@
+case $TARGET_ARCH in
+  arm)
+    TARGET_CPU="cortex-a8"
+    TARGET_FLOAT="hard"
+    TARGET_FPU="neon"
+    ;;
+esac
+
+KERNEL_TARGET="zImage"
+
+# Mali-400 (Utgard) GPU
+MALI_FAMILY="400"
+
+# use the Allwinner BSP 3.4 kernel (Linux/ARM), not mainline
+LINUX="sunxi-3.4"
+
+# mainline u-boot board mapping handled by scripts/uboot_helper
+UBOOT_SYSTEM="a13-olinuxino"
+UBOOT_TARGET=""
+DEVICE_BOARDS="a13-olinuxino"
+
+# firmware used by the vendored BSP audio/gpu paths
+ADDITIONAL_PACKAGES=""
+
+# --- minimal build for a small A13 handheld ---
+SAMBA_SUPPORT="no"
+SAMBA_SERVER="no"
+NFS_SUPPORT="no"
+AVAHI_DAEMON="no"
+BLUETOOTH_SUPPORT="no"
+SFTP_SERVER="no"
+OPENVPN_SUPPORT="no"
+WIREGUARD_SUPPORT="no"
+EXFAT="no"
+NTFS3G="no"
+HFSTOOLS="no"
+NANO_EDITOR="no"
+CRON_SUPPORT="no"
+INSTALLER_SUPPORT="no"
+OEM_SUPPORT="no"
+UDEVIL="no"
+ISCSI_SUPPORT="no"
+
+# only cores that realistically build/run on Cortex-A8 (avoid huge/heavy deps)
+LIBRETRO_CORES=" fceumm nestopia snes9x2002 snes9x2005 snes9x2010 gambatte mgba \
+genesis-plus-gx picodrive prosystem stella vecx gme handy pcsx_rearmed mame2003-plus "
+GET_HANDLER_SUPPORT="archive git file"
+
+# A13_4C no firmware: skip wifi/bt/dvb firmware & kernel-firmware dependency
+FIRMWARE=""
+export KCFLAGS="-fgnu89-inline"
+PKG_BUILD_PERF="no"
+MEDIACENTER="retroarch"
+
+# LCD (RGB) via script.bin; no HDMI on this handheld
+EXTRA_CMDLINE="console=ttyS0,115200 console=tty1"

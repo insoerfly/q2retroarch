@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0
+# A13_4C: write U-Boot at 8K, boot the BSP sunxi-3.4 kernel via boot.scr + script.bin
+# (mainline extlinux + missing FDT is not usable with a non-DT BSP kernel)
+
+B3="$RELEASE_DIR/3rdparty/bootloader"
+MTOOLS="${TOOLCHAIN}/bin"
+IMG="${DISK}@@${OFFSET}"
+
+if [ -f "$B3/u-boot-sunxi-with-spl.bin" ]; then
+  echo "image: writing U-Boot to $(basename $DISK) at 8K"
+  dd if="$B3/u-boot-sunxi-with-spl.bin" of="$DISK" bs=1K seek=8 conv=fsync,notrunc >"$SAVE_ERROR" 2>&1 || show_error
+else
+  echo "image: ERROR u-boot-sunxi-with-spl.bin not staged"
+fi
+
+# drop extlinux (BSP kernel is non-DT; we use boot.scr instead)
+"$MTOOLS/mdel" -i "$IMG" ::/extlinux/extlinux.conf >/dev/null 2>&1 || true
+"$MTOOLS/mrd"  -i "$IMG" ::/extlinux >/dev/null 2>&1 || true
+
+# BSP handoff: script.bin (board config) + boot.scr
+if [ -f "$B3/script.bin" ]; then
+  echo "image: adding script.bin to boot partition"
+  "$MTOOLS/mcopy" -i "$IMG" -o "$B3/script.bin" ::
+fi
+if [ -f "$B3/boot.scr" ]; then
+  echo "image: adding boot.scr to boot partition"
+  "$MTOOLS/mcopy" -i "$IMG" -o "$B3/boot.scr" ::
+fi

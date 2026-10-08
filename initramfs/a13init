@@ -1,0 +1,141 @@
+#!/usr/bin/busybox sh
+BB=/usr/bin/busybox
+PATH=/usr/bin:/bin:/sbin:/usr/sbin
+export PATH
+
+$BB mkdir -p /dev /proc /sys /tmp /flash /newroot
+$BB mount -t devtmpfs devtmpfs /dev 2>/dev/null
+$BB mount -t proc proc /proc 2>/dev/null
+$BB mount -t sysfs sysfs /sys 2>/dev/null
+[ -c /dev/console ] && exec >/dev/console 2>&1 </dev/console
+
+say() { echo "A13: $*"; echo "A13: $*" >/dev/kmsg 2>/dev/null; }
+
+$BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /flash 2>/tmp/me
+say "vfat rc=$?"
+LOG=/flash/RETRO.LOG
+{ : > "$LOG"; } 2>/dev/null || LOG=/tmp/RETRO.LOG
+log() { echo "$@" >>"$LOG" 2>/dev/null; echo "$@" >/dev/kmsg 2>/dev/null; }
+
+$BB mount -t squashfs -o ro,loop /flash/SYSTEM /newroot 2>/tmp/e
+log "SYSTEM rc=$?"
+if [ ! -d /newroot/usr ]; then
+  log "FATAL no /newroot/usr"
+  while true; do $BB sleep 3600; done
+fi
+
+$BB mkdir -p /newroot/run /newroot/var /newroot/tmp /newroot/storage /newroot/dev /newroot/proc /newroot/sys /newroot/flash
+$BB mount -t tmpfs tmpfs /newroot/run 2>/dev/null
+$BB mount -t tmpfs tmpfs /newroot/var 2>/dev/null
+$BB mount -t tmpfs tmpfs /newroot/tmp 2>/dev/null
+$BB mount -t devtmpfs devtmpfs /newroot/dev 2>/dev/null
+$BB mkdir -p /newroot/dev/pts /newroot/dev/shm
+$BB mount -t devpts devpts /newroot/dev/pts 2>/dev/null
+$BB mount -t tmpfs tmpfs /newroot/dev/shm 2>/dev/null
+$BB mount -t proc proc /newroot/proc 2>/dev/null
+$BB mount -t sysfs sysfs /newroot/sys 2>/dev/null
+$BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /newroot/flash 2>/dev/null
+$BB mount -t debugfs none /sys/kernel/debug 2>/dev/null
+
+# storage: a big FAT partition for games/settings (uses free space on the card)
+$BB mkdir -p /newroot/storage
+STORAGE=""
+for p in 2 3 4; do
+  DEV=/dev/mmcblk0p$p
+  [ -b "$DEV" ] || continue
+  SZ=$($BB cat /sys/block/mmcblk0/mmcblk0p$p/size 2>/dev/null)
+  [ -n "$SZ" ] && [ "$SZ" -gt 1048576 ] || continue
+  if $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 "$DEV" /newroot/storage 2>/dev/null; then
+    STORAGE="$DEV"; break
+  fi
+done
+if [ -z "$STORAGE" ]; then
+  TOTAL=$($BB cat /sys/block/mmcblk0/size 2>/dev/null)
+  P2S=$($BB cat /sys/block/mmcblk0/mmcblk0p2/start 2>/dev/null)
+  P2N=$($BB cat /sys/block/mmcblk0/mmcblk0p2/size 2>/dev/null)
+  # only auto-create once, and only strictly AFTER p2 (never near the bootloader area)
+  if [ -n "$TOTAL" ] && [ -n "$P2S" ] && [ -n "$P2N" ] && [ "$P2S" -gt 2048 ] && [ ! -f /flash/.expanding ]; then
+    START=$((P2S + P2N + 4096)); LAST=$((TOTAL - 1))
+    log "creating storage partition sectors $START..$LAST"
+    : > /flash/.expanding
+    [ -b /dev/mmcblk0p3 ] && printf 'd\n3\n' | $BB fdisk /dev/mmcblk0 >>"$LOG" 2>&1
+    printf 'n\np\n3\n%s\n%s\nt\n3\nc\nw\n' "$START" "$LAST" | $BB fdisk /dev/mmcblk0 >>"$LOG" 2>&1
+    $BB sync 2>/dev/null
+    log "rebooting to re-read partition table"
+    $BB reboot -f 2>/dev/null || $BB reboot
+    while true; do $BB sleep 3600; done
+  fi
+  log "no big partition -> storage on FAT dir"
+  $BB mkdir -p /newroot/flash/storage
+  $BB mount --bind /newroot/flash/storage /newroot/storage 2>/dev/null
+fi
+log "storage=$STORAGE"
+$BB mkdir -p /newroot/storage/.config/retroarch /newroot/storage/roms /newroot/storage/saves /newroot/storage/states /newroot/storage/screenshots /newroot/storage/playlists
+
+$BB mkdir -p /newroot/tmp/assets /newroot/tmp/cores /newroot/tmp/system /newroot/tmp/joypads /newroot/tmp/overlays /newroot/tmp/shaders /newroot/tmp/database
+$BB mkdir -p /newroot/run/libreelec /newroot/retroarch /newroot/var/lib /newroot/var/log
+
+CFG=/newroot/storage/.config/retroarch/retroarch.cfg
+if [ ! -f "$CFG" ]; then
+  log "first run: creating $CFG"
+  cp /newroot/etc/retroarch.cfg "$CFG" 2>/dev/null || : > "$CFG"
+  $BB cat >> "$CFG" <<'OV'
+video_driver = "sunxi"
+video_threaded = "false"
+input_driver = "udev"
+input_joypad_driver = "linuxraw"
+audio_driver = "alsa"
+bluetooth_driver = "null"
+menu_driver = "rgui"
+video_fullscreen = true
+config_save_on_exit = true
+libretro_directory = "/usr/lib/libretro"
+assets_directory = "/usr/share/retroarch-assets"
+system_directory = "/usr/share/retroarch-system"
+savefile_directory = "/storage/saves"
+savestate_directory = "/storage/states"
+screenshot_directory = "/storage/screenshots"
+rgui_browser_directory = "/storage/roms"
+playlist_directory = "/storage/playlists"
+joypad_autoconfig_dir = "/flash/joypads"
+network_cmd_enable = "false"
+input_player1_joypad_index = "0"
+input_player1_a_btn = "0"
+input_player1_b_btn = "1"
+input_player1_x_btn = "2"
+input_player1_y_btn = "3"
+input_player1_l_btn = "4"
+input_player1_r_btn = "5"
+input_player1_select_btn = "6"
+input_player1_start_btn = "7"
+input_player1_up_btn = "9"
+input_player1_down_btn = "10"
+input_player1_left_btn = "11"
+input_player1_right_btn = "12"
+OV
+fi
+
+MODE=$($BB cat /flash/MODE 2>/dev/null)
+case "$MODE" in
+  *scan*)
+    log "MODE=scan -> btnscan"
+    [ -x /flash/btnscan ] && /flash/btnscan > /dev/console 2>&1
+    while true; do $BB sleep 3600; done
+    ;;
+esac
+
+RA=/usr/bin/retroarch
+[ -x /newroot/flash/retroarch ] && RA=/flash/retroarch
+HOME=/storage
+LD_LIBRARY_PATH=/usr/lib:/tmp/cores
+PATH=/usr/bin:/bin:/sbin:/usr/sbin
+export HOME LD_LIBRARY_PATH PATH
+
+( while true; do $BB sleep 3; $BB dmesg > /flash/DMESG.txt 2>/dev/null; $BB sync 2>/dev/null; done ) &
+
+log "=== launch $RA ==="
+$BB chroot /newroot "$RA" --verbose > /newroot/flash/RA.LOG 2>&1 &
+wait $!
+$BB sync 2>/dev/null
+log "retroarch exited"
+while true; do $BB sleep 3600; done

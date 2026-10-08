@@ -1,0 +1,4 @@
+setenv bootargs "console=tty0 console=ttyS0,115200 loglevel=7 boot=LABEL=LAKKA disk=LABEL=LAKKA_DISK"
+fatload mmc 0:1 0x42000000 KERNEL
+fatload mmc 0:1 0x43000000 script.bin
+bootz 0x42000000

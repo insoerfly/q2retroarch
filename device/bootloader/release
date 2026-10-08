@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-2.0
+# A13_4C: stage U-Boot + BSP script.bin + boot.scr for the image builder
+
+mkdir -p $RELEASE_DIR/3rdparty/bootloader
+
+cp -a $(get_build_dir $BOOTLOADER)/u-boot-sunxi-with-spl.bin $RELEASE_DIR/3rdparty/bootloader
+
+DEVBL="${PROJECT_DIR}/${PROJECT}/devices/${DEVICE}/bootloader"
+
+# BSP board config (sys_config) read by the sunxi-3.4 kernel at 0x43000000
+[ -f "$DEVBL/script.bin" ] && cp -a "$DEVBL/script.bin" $RELEASE_DIR/3rdparty/bootloader
+
+# compile the boot script (loads KERNEL + script.bin to 0x43000000, then bootz)
+if [ -f "$DEVBL/scripts/boot.src" ]; then
+  $(get_build_dir $BOOTLOADER)/tools/mkimage -A arm -O linux -T script -C none \
+    -n "A13_4C boot" -d "$DEVBL/scripts/boot.src" \
+    $RELEASE_DIR/3rdparty/bootloader/boot.scr
+fi
