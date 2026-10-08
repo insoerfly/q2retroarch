@@ -51,9 +51,12 @@ mkfs.vfat -F 32 -n LAKKA "${L}p1"
 mkfs.ext4 -q -L LAKKA_DISK "${L}p2"
 mkdir -p /mnt/sd1
 mount "${L}p1" /mnt/sd1
-mkdir -p /mnt/sd1/res /mnt/sd1/joypads
+mkdir -p /mnt/sd1/res /mnt/sd1/res/ext /mnt/sd1/joypads
 cp "$KERNEL_IMG" /mnt/sd1/res/DATA01
 cp "$SCRIPTBIN"  /mnt/sd1/res/DATA02
+# загрузчик вендора ищет ядро в res/ext/
+cp "$KERNEL_IMG" /mnt/sd1/res/ext/DATA01
+cp "$SCRIPTBIN"  /mnt/sd1/res/ext/DATA02
 cp "$OUT/boot.scr" /mnt/sd1/boot.scr
 [ -f "$RETROARCH" ] && cp "$RETROARCH" /mnt/sd1/retroarch
 [ -f "$REPO/config/a13-retro-keys.cfg" ] && cp "$REPO/config/a13-retro-keys.cfg" /mnt/sd1/joypads/
