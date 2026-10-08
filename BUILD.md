@@ -60,18 +60,23 @@ cp retroarch out/retroarch-sunxi
 
 ## 3. SD-образ
 
-```sh
-sudo scripts/build_sdimage.sh    # соберёт out/lakka-full.img (+ .gz)
-```
+> ⚠️ Загрузочный образ делается **не** «с нуля через sfdisk», а от **рабочего базового образа**.
+> Проверено: `lakka-a13.img` + `boot_patch_4M.img` (первые 4 МиБ с загрузчиком) → карта грузится.
 
-Сборщик:
-1. делает образ 2600 МБ, размечает: p1 FAT32 (1.5 ГБ, boot), p2 ext4;
-2. копирует загрузчик Allwinner из `bootloader/boot0-boot1_8k-1mb.bin` в секторы 16..2047;
-3. кладёт на p1: `res/DATA01` (наш uImage), `res/DATA02` (script.bin), `boot.scr`,
-   `retroarch`, `joypads/a13-retro-keys.cfg`, `SYSTEM`.
+Правильный путь (`scripts/build_sdimage.sh`):
+1. base = `lakka-a13.img` (собранный `make image`), p1 FAT начинается с **сектора 8192 (offset 4 МиБ)**;
+2. `dd if=boot_patch_4M.img of=<img> bs=512 count=8192 conv=notrunc` — записать загрузчик в первые 4 МиБ;
+3. смонитровать p1 и заменить/положить файлы:
+   - `res/ext/DATA01` (**наше ядро uImage**) и `res/ext/DATA02` (script.bin) — именно тут ищет вендорский u-boot;
+   - продублировать в `res/DATA01`/`res/DATA02` (на случай boot.scr);
+   - `SYSTEM` (squashfs), `retroarch`, `joypads/a13-retro-keys.cfg`, `boot.scr`.
 
-Референсный `20240628.img` (вендорский) нужен только как источник загрузчика — он уже вынесен в
-`bootloader/boot0-boot1_8k-1mb.bin`.
+Что было не так раньше:
+- `p1` ставили на сектор 2048 (offset 1 МиБ) — загрузчику нужно 4 МиБ;
+- загрузчик брали из `20240628.img` (её boot‑область — другой u‑boot, md5 не тот) → не грузилось.
+
+Файл загрузчика `boot_patch_4M.img` (4 МиБ) должен присутствовать в репо/`out` — он получен из рабочего
+образа и содержит MBR + `eGON.BT0` + `U-Boot SPL 2019.04`.
 
 ## 4. Первый запуск
 Init (`initramfs/a13init`) при первом старте: если нет большого FAT‑раздела — создаёт `p3` строго
