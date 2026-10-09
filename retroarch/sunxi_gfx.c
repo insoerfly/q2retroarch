@@ -42,6 +42,18 @@
 
 #define NUMPAGES 2
 
+/* A13 debug: breadcrumbs that survive a hang (fflush to stderr) */
+#define SUNXI_DBG(...) do { \
+   fprintf(stderr, "SUNXI: " __VA_ARGS__); \
+   fprintf(stderr, "\n"); \
+   fflush(stderr); \
+} while (0)
+/* same, plus fsync (main-thread use only: fsync can block on SD) */
+#define SUNXI_DBGS(...) do { \
+   SUNXI_DBG(__VA_ARGS__); \
+   fsync(fileno(stderr)); \
+} while (0)
+
 /* Lowlevel SunxiG2D functions block */
 #define FBIOGET_LAYER_HDL_0 0x4700
 #define FBIOGET_LAYER_HDL_1 0x4701
@@ -469,9 +481,11 @@ error:
 
 static int sunxi_disp_close(sunxi_disp_t *ctx)
 {
+   SUNXI_DBG("disp_close enter fd_disp=%d", ctx->fd_disp);
    if (ctx->fd_disp >= 0)
    {
       /* release layer */
+      SUNXI_DBG("disp_close layer_release");
       sunxi_layer_release(ctx);
       /* close descriptors */
       munmap(ctx->framebuffer_addr, ctx->framebuffer_size);
@@ -480,6 +494,7 @@ static int sunxi_disp_close(sunxi_disp_t *ctx)
       ctx->fd_disp = -1;
       free(ctx);
    }
+   SUNXI_DBG("disp_close done");
    return 0;
 }
 /* END of lowlevel SunxiG2D functions block */
@@ -540,6 +555,7 @@ struct sunxi_video
 
    /* Keep the vsync while loop going. Set to false to exit. */
    volatile bool keep_vsync;
+   volatile bool vsync_exited;
 
    /* Variables to restore screen on exit */
    unsigned int screensize;
@@ -599,6 +615,7 @@ static void sunxi_vsync_thread_func(void *data)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
 
+   SUNXI_DBG("vsync_thread start");
    while (_dispvars->keep_vsync)
    {
       /* Wait for next vsync */
@@ -618,6 +635,8 @@ static void sunxi_vsync_thread_func(void *data)
       scond_signal(_dispvars->vsync_condition);
       slock_unlock(_dispvars->pending_mutex);
    }
+   _dispvars->vsync_exited = true;
+   SUNXI_DBG("vsync_thread exit");
 }
 
 static void *sunxi_gfx_init(const video_info_t *video,
@@ -626,11 +645,13 @@ static void *sunxi_gfx_init(const video_info_t *video,
    struct sunxi_video *_dispvars = (struct sunxi_video*)
       calloc(1, sizeof(struct sunxi_video));
 
+   SUNXI_DBG("gfx_init enter");
    if (!_dispvars)
       return NULL;
 
    _dispvars->src_bytes_per_pixel = video->rgb32 ? 4 : 2;
    _dispvars->sunxi_disp          = sunxi_disp_init("/dev/fb0");
+   SUNXI_DBG("gfx_init disp=%p", (void*)_dispvars->sunxi_disp);
 
    /* Blank text console and disable cursor blinking. */
    sunxi_blank_console(_dispvars);
@@ -673,8 +694,10 @@ static void *sunxi_gfx_init(const video_info_t *video,
       *input = NULL;
 
    /* Launching vsync thread */
+   _dispvars->vsync_exited     = false;
    _dispvars->vsync_thread     = sthread_create(sunxi_vsync_thread_func, _dispvars);
 
+   SUNXI_DBG("gfx_init done");
    return _dispvars;
 
 error:
@@ -687,9 +710,21 @@ static void sunxi_gfx_free(void *data)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
 
-   /* A13FIX: always stop and join the vsync thread we keep alive. */
+   int w;
+   SUNXI_DBGS("gfx_free enter");
+   /* A13FIX: pthread_join on the vsync thread hangs on this device.
+    * Signal exit and wait (bounded) for the thread to report it stopped.
+    * If it does not stop, leak rather than risk a use-after-free. */
    _dispvars->keep_vsync = false;
-   sthread_join(_dispvars->vsync_thread);
+   SUNXI_DBGS("gfx_free waiting vsync");
+   for (w = 0; w < 300 && !_dispvars->vsync_exited; w++)
+      usleep(10000);
+   if (!_dispvars->vsync_exited)
+   {
+      SUNXI_DBGS("gfx_free vsync STUCK -> leak");
+      return;
+   }
+   SUNXI_DBGS("gfx_free vsync stopped");
 
    slock_free(_dispvars->pending_mutex);
    scond_free(_dispvars->vsync_condition);
@@ -697,10 +732,13 @@ static void sunxi_gfx_free(void *data)
    free(_dispvars->pages);
 
    /* Restore text console contents and reactivate cursor blinking. */
+   SUNXI_DBGS("gfx_free restore_console");
    sunxi_restore_console(_dispvars);
 
+   SUNXI_DBGS("gfx_free disp_close");
    sunxi_disp_close(_dispvars->sunxi_disp);
    free(_dispvars);
+   SUNXI_DBGS("gfx_free done");
 }
 
 static void sunxi_update_main(const void *frame, struct sunxi_video *_dispvars)

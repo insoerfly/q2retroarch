@@ -673,3 +673,45 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
 - Патчи ядра: `patches/` (см. `patches/README.md`).
 - Обновлённые исходники: `kernel/a13keys.c`, `kernel/kernel.config`, `retroarch/sunxi_gfx.c`,
   `initramfs/a13init`, `bootloader/script_q2.bin`.
+
+---
+
+## Обновление 7 (2026-10-09) — игра запускается; кнопка Menu; USB; XMB
+
+### ГЛАВНОЕ: запуск игры из меню — ПОЧИНЕН
+- Причина зависания: при загрузке контента из меню RetroArch делает `MAIN_DEINIT` → `MAIN_INIT`
+  (пересоздаёт видеодрайвер). В `sunxi_gfx_free` вызов **`sthread_join(vsync_thread)` вис
+  намертво** (поток печатал выход, но `pthread_join` не возвращался — крошка `SUNXI:` подтвердила).
+- Фикс в `retroarch/sunxi_gfx.c`: `gfx_free` больше **не вызывает `pthread_join`** — ставит
+  `keep_vsync=false` и ждёт флаг `vsync_exited` с таймаутом 3 с; если поток не завершился,
+  не освобождает память (без use-after-free), но **не виснет**. На железе игра запустилась.
+- Для отладки: в `sunxi_gfx.c` есть крошки `SUNXI_DBG`/`SUNXI_DBGS` (fflush/fsync в stderr);
+  в `retroarch.cfg` — `log_to_file=true`, `log_dir=/storage/logs`.
+
+### Кнопка Home/Menu → меню RetroArch
+- В `retroarch.cfg`: `input_enable_hotkey_btn = "8"` и `input_menu_toggle_btn = "8"`
+  (js-кнопка 8 = `BTN_MODE` = Menu, PE1). Нажатие = hotkey+toggle → в игре открывается
+  Quick Menu (сейвстейты, выход). То же добавлено в шаблон `a13init`.
+
+### USB-консоль (ttyGS0)
+- **Гейджет поднимается**: в `sw_udc` generic INT autoconfig отдавал ACM-notify **bulk**-эндпойнт
+  (bulk годится под interrupt), и mass storage не хватало bulk. Фикс
+  `patches/0006-sw_udc-int-ep-first.patch` (`ep5-int` первым в `ep_list`). → `g_acm_ms ready`,
+  в Windows появляется COM-порт (VID_1D6B PID_0106).
+- **Не доведено**: Windows-порт не открывается — устройство переконфигурируется каждые ~20 с
+  (`full-speed config #1`) и LUN mass-storage `(no medium)` (похоже, `busybox insmod` не передаёт
+  `file=/dev/mmcblk0p3`).
+
+### XMB
+- XMB **встроен** в RetroArch (`menu_ctx_xmb`), но при старте откатывается на `rgui` — XMB/Ozone
+  требуют menu-framebuffer/текстуры, которых софтверный `sunxi`-драйвер не даёт.
+  `menu_shader_pipeline=0` не помог. Оставлено rgui.
+
+### Аудио (отложено)
+- Звук — внутренний `sunxi-CODEC`, громкость фиксированная (аналоговый регулятор на плате).
+  Пин усилителя: вендорский `res/DATA02` = **PC10**, `res/ext/DATA02` = **PG10**. Похоже, FEX ext
+  (29096) перезаписал рабочий сток (30156); вернули `audio_pa_ctrl = PC10` (нужна проверка).
+
+### Образ
+- Пересобрано и влито в `lakka-full.img`: ядро (initramfs с новым `a13init`), RetroArch,
+  FEX (PC10) в `res/DATA02`/`res/ext/DATA02`/`script.bin`.

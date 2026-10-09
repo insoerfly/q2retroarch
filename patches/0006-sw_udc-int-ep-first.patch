@@ -1,0 +1,22 @@
+--- /home/agent/r3x/lakka/build.Lakka-A13_4C.arm-3.7.5-devel/linux-d47d367036be38c5180632ec8a3ad169a4593a88/drivers/usb/sunxi_usb/udc/sw_udc.c.eporder_bak	2026-10-09 20:36:04.784788762 +0500
++++ /home/agent/r3x/lakka/build.Lakka-A13_4C.arm-3.7.5-devel/linux-d47d367036be38c5180632ec8a3ad169a4593a88/drivers/usb/sunxi_usb/udc/sw_udc.c	2026-10-09 20:36:04.822506196 +0500
+@@ -2918,10 +2918,18 @@
+ 	INIT_LIST_HEAD (&dev->gadget.ep0->ep_list);
+ 	dev->ep0state = EP0_IDLE;
+ 
++	/* Put the interrupt EP (ep5-int) first in ep_list: generic INT
++	 * autoconfig picks the first matching EP, but a bulk EP also matches
++	 * an INT request.  If a bulk EP is taken for the INT notify, a
++	 * multi-bulk function (mass storage) runs out of bulk EPs. */
++	if (SW_UDC_ENDPOINTS > 1)
++		list_add_tail (&dev->ep[SW_UDC_ENDPOINTS - 1].ep.ep_list,
++			       &dev->gadget.ep_list);
++
+ 	for (i = 0; i < SW_UDC_ENDPOINTS; i++) {
+ 		struct sw_udc_ep *ep = &dev->ep[i];
+ 
+-		if (i != 0) {
++		if (i != 0 && i != SW_UDC_ENDPOINTS - 1) {
+ 			list_add_tail (&ep->ep.ep_list, &dev->gadget.ep_list);
+         }
+ 

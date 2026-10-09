@@ -110,3 +110,20 @@ Init (`initramfs/a13init`) при первом старте: если нет б�
   затем `.so` → `SYSTEM/usr/lib/libretro`.
 - **Отладка игр**: файл `MODE` на FAT со словом `test` — `a13init` запустит ядро+ROM
   **напрямую** (мимо меню) и запишет подробный `RA.LOG`.
+
+## 7. Запуск игр, кнопка меню, USB-консоль (2026-10-09)
+
+- **Запуск игры из меню** (был фриз): при загрузке контента RetroArch пересоздаёт видеодрайвер
+  (`MAIN_DEINIT`→`MAIN_INIT`), и `sunxi_gfx_free` висел в `pthread_join(vsync_thread)`.
+  В `retroarch/sunxi_gfx.c` join заменён на ожидание флага `vsync_exited` (таймаут 3 с);
+  при таймауте память не освобождается (без use-after-free), но система не виснет.
+- **Кнопка Home/Menu → меню RetroArch**: в `retroarch.cfg` (и шаблоне `a13init`)
+  `input_enable_hotkey_btn="8"` + `input_menu_toggle_btn="8"` (js-кнопка 8 = `BTN_MODE`).
+- **USB-консоль**: `patches/0006-sw_udc-int-ep-first.patch` — в `sw_udc` эндпойнт `ep5-int`
+  ставится первым в `ep_list` (иначе INT-autoconfig отдаёт bulk ACM-notify и mass storage
+  не хватает bulk). После этого `g_acm_ms` поднимается и появляется COM-порт.
+  Осталось: порт не открывается (переконфиг ~20 с, LUN «no medium»).
+- **Логи RetroArch**: `log_to_file=true`, `log_dir=/storage/logs`; в `sunxi_gfx.c` — отладочные
+  крошки `SUNXI_DBG`/`SUNXI_DBGS` (пишут в stderr с `fflush`/`fsync`, чтобы пережили фриз).
+- **Сборка RetroArch**: `make V=1 HAVE_LAKKA=1 HAVE_ZARCH=0 HAVE_WIFI=1 HAVE_BLUETOOTH=1
+  HAVE_FREETYPE=1 -j$(nproc)` в `retroarch-ad89b0c`; бинарь → `out/retroarch-sunxi` и в образ.
