@@ -755,3 +755,32 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
 - SYSTEM пересобран (+`vendpsx`). При заливке SYSTEM в образ mtools повредил FAT — вылечено
   `dosfsck -a` и повторной заливкой. Карта и образ синхронизированы.
 - Вендорские ядра выложены в репо (`vendor-cores/`, коммит `02f000a`).
+
+---
+
+## Обновление 9 (2026-10-09) — USB-консоль (root-shell) работает
+
+### USB serial console — РАБОТАЕТ
+- Первопричина: масса-сторадж (`lun0 ... (no medium)`) заставлял хост каждые ~20 с
+  переинициализировать композит (`g_acm_ms gadget: full-speed config #1`), из-за чего
+  COM-порт не открывался («Устройство не существует»/«Отказано в доступе»).
+- В `acm_ms.c` добавлен параметр `use_ms`; масса-сторадж теперь **выключен по умолчанию**
+  (`static int use_ms = 0`) — поднимается только CDC-ACM. В `a13init` модуль берётся из
+  `/flash/g_acm_ms.ko` (fallback — `/g_acm_ms.ko` из initramfs), затем ждём `ttyGS0`.
+- В `a13init` на `ttyGS0` поднимается shell (`chroot /newroot /bin/sh -i`) + banner.
+- **Проверено на железе**: Windows открывает COM (115200 8N1), приходит root-shell:
+  ```
+  / # id
+  uid=0(root) gid=0(root)
+  Linux (none) 3.4.104 #123 PREEMPT armv7l
+  ```
+  Отладка/логи теперь без вынимания SD-карты.
+
+### Диагностика крэша PSX (через консоль)
+- Наш `pcsx_rearmed` падает с `rc=139` (SIGSEGV), `fault_addr=(nil)` — NULL-разыменование
+  очень рано (сразу после `gfx_init` для контента, до каких-либо сообщений ядра).
+- `crashtrace.so` (в `/flash/crashtrace.so`, подключается через `LD_PRELOAD` в `a13init`)
+  на SIGSEGV/SIGBUS печатает в `RA.LOG` PC/LR/FP и смещения в модуле (`/proc/self/maps`)
+  для последующего `addr2line`. Точная функция — в работе.
+- `a13init` логирует код выхода: `RETRO.LOG` → `retroarch exited rc=<N>` (139=SIGSEGV,
+  137=OOM/SIGKILL).

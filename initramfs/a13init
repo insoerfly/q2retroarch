@@ -111,15 +111,20 @@ else
 fi
 
 # USB composite gadget: serial console (ttyGS0) + SD mass storage (rw)
-KO=/g_acm_ms.ko
-[ -f "$KO" ] || KO=/flash/g_acm_ms.ko
+KO=/flash/g_acm_ms.ko
+[ -f "$KO" ] || KO=/g_acm_ms.ko
 if [ -f "$KO" ]; then
-  $BB insmod "$KO" file="${STORAGE:-/dev/mmcblk0p3}" ro=0 luns=1 2>/dev/null \
-    && log "usb: g_acm_ms (console + mass-storage ${STORAGE:-p3} rw)" \
+  $BB insmod "$KO" use_ms=0 2>/dev/null \
+    && log "usb: g_acm_ms ACM-only (serial console ttyGS0)" \
     || log "usb: g_acm_ms insmod failed"
 fi
 if [ -c /dev/ttyGS0 ]; then
-  ( while true; do $BB chroot /newroot /bin/sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1; $BB sleep 1; done ) &
+  log "usb: ttyGS0 present -> serial console shell"
+  ( while true; do echo "A13CONSOLE READY @$(date +%s), type a command:" > /dev/ttyGS0 2>/dev/null; \
+      $BB chroot /newroot /bin/sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1 || \
+      $BB sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1; $BB sleep 1; done ) &
+else
+  log "usb: ttyGS0 MISSING"
 fi
 
 CFG=/newroot/storage/.config/retroarch/retroarch.cfg
@@ -203,6 +208,8 @@ HOME=/storage
 LD_LIBRARY_PATH=/usr/lib:/tmp/cores
 PATH=/usr/bin:/bin:/sbin:/usr/sbin
 export HOME LD_LIBRARY_PATH PATH
+# optional SIGSEGV backtrace helper (card /flash/crashtrace.so)
+[ -f /newroot/flash/crashtrace.so ] && export LD_PRELOAD=/flash/crashtrace.so
 
 ( while true; do $BB sleep 3; $BB dmesg > /flash/DMESG.txt 2>/dev/null; $BB sync 2>/dev/null; done ) &
 

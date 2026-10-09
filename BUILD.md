@@ -31,6 +31,7 @@
 cd <linux-src>
 cp kernel/a13keys.c drivers/input/
 grep -q a13keys drivers/input/Makefile || echo "obj-y += a13keys.o" >> drivers/input/Makefile
+cp kernel/acm_ms.c drivers/usb/gadget/acm_ms.c      # ACM-only (use_ms=0), см. patches/README.md
 cp kernel/a13init <initramfs-dir>/a13init         # наш init (см. initramfs/a13init)
 rm -f usr/initramfs_data.cpio.gz usr/initramfs_data.o
 make ARCH=arm CROSS_COMPILE=<tc>/bin/armv7a-libreelec-linux-gnueabi- \
@@ -98,10 +99,11 @@ Init (`initramfs/a13init`) при первом старте: если нет б�
   уберите `X86` и портируйте `zsmalloc-main.c` (`set_pte`→`set_pte_ext`,
   `__flush_tlb_one`→`flush_tlb_kernel_page`). В `.config`: `CONFIG_STAGING=y`,
   `CONFIG_ZRAM=y`, `CONFIG_ZSMALLOC=y`. `a13init` делает swap **128 МБ** на `/dev/zram0`.
-- **USB-гейджет** (`patches/0004`, `0005`, FEX): USB0 → **DEVICE** (конфиг ядра и FEX
-  `usbc0.usb_port_type=0`), `CONFIG_USB_GADGET=y`, `CONFIG_USB_G_ACM_MS=m`,
-  `CONFIG_USB_SW_SUNXI_UDC0=y`; модуль `g_acm_ms.ko` кладётся в initramfs.
-  **Статус: НЕ доведён** — sunxi UDC не проходит `usb_ep_autoconfig` (композит не встаёт).
+- **USB-гейджет** (`patches/0004..0006`, `kernel/acm_ms.c`, FEX): USB0 → **DEVICE** (конфиг
+  ядра и FEX `usbc0.usb_port_type=0`), `CONFIG_USB_GADGET=y`, `CONFIG_USB_G_ACM_MS=m`,
+  `CONFIG_USB_SW_SUNXI_UDC0=y`; модуль `g_acm_ms.ko` кладётся в initramfs и на FAT.
+  **Статус: работает** — композит поднимается в режиме **только CDC-ACM** (масса-сторадж
+  выключен, `use_ms=0`), доступен root-shell по COM.
 - **FEX Q2** — `bootloader/script_q2.bin` (29096 б): `target.boot_clock=912`,
   `usbc0.usb_port_type=0` (правится `patches/fex-set-usb-device.py`).
 - **pcsx_rearmed low-mem**: в `libpcsxcore/new_dynarec/assem_arm.h` `TARGET_SIZE_2=23`
@@ -119,10 +121,11 @@ Init (`initramfs/a13init`) при первом старте: если нет б�
   при таймауте память не освобождается (без use-after-free), но система не виснет.
 - **Кнопка Home/Menu → меню RetroArch**: в `retroarch.cfg` (и шаблоне `a13init`)
   `input_enable_hotkey_btn="8"` + `input_menu_toggle_btn="8"` (js-кнопка 8 = `BTN_MODE`).
-- **USB-консоль**: `patches/0006-sw_udc-int-ep-first.patch` — в `sw_udc` эндпойнт `ep5-int`
-  ставится первым в `ep_list` (иначе INT-autoconfig отдаёт bulk ACM-notify и mass storage
-  не хватает bulk). После этого `g_acm_ms` поднимается и появляется COM-порт.
-  Осталось: порт не открывается (переконфиг ~20 с, LUN «no medium»).
+- **USB-консоль — работает**: `patches/0006-sw_udc-int-ep-first.patch` (в `sw_udc` `ep5-int`
+  первым в `ep_list`) + `kernel/acm_ms.c` (масса-сторадж выключен, `use_ms=0`; без него
+  хост каждые ~20 с переинициализировал композит из-за LUN «no medium», и порт не
+  открывался). В Windows — COM-порт, в `ttyGS0` — root-shell (`a13init` поднимает
+  `chroot /newroot /bin/sh -i`).
 - **Логи RetroArch**: `log_to_file=true`, `log_dir=/storage/logs`; в `sunxi_gfx.c` — отладочные
   крошки `SUNXI_DBG`/`SUNXI_DBGS` (пишут в stderr с `fflush`/`fsync`, чтобы пережили фриз).
 - **Сборка RetroArch**: `make V=1 HAVE_LAKKA=1 HAVE_ZARCH=0 HAVE_WIFI=1 HAVE_BLUETOOTH=1
