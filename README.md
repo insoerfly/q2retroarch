@@ -49,11 +49,14 @@
 
 ## Что уже работает
 - Загрузка кастомного ядра (BSP linux-sunxi 3.4), свой init (`rdinit=/a13init`, без systemd).
-- RetroArch (собственный софт-видеодрайвер `sunxi`, pixman → DISP): меню и игры выводятся.
+- RetroArch (собственный софт-видеодрайвер `sunxi`, pixman → DISP): **меню выводится**.
 - **Кнопки** (стик и кнопки A/B/X/Y/L/R/Start/Select/Menu) — драйвер `a13keys` + раскладка Q2.
 - **Звук** (ALSA, кодек sunxi).
+- **zram-swap 128 МБ** — драйвер `zram`/`zsmalloc` портирован на ARM (см. `patches/`).
 - **Сохранение настроек** и раздел под игры (авто‑расширение на свободное место карты).
 - Меню быстрее: убран блокирующий `FBIO_WAITFORVSYNC` в пути меню (LCD даёт vsync ~354 мс).
+- ⚠️ **Запуск игр пока НЕ работает**: ядра находятся, контент грузится, но сразу выгружается
+  (`Content ran for 0 seconds`) — см. «Известные ограничения» и `docs/STATUS.md` (Обновление 6).
 
 ## Железо
 - SoC: Allwinner A13 (sun5i), 256 МБ RAM.
@@ -70,6 +73,7 @@ initramfs/    a13init (+ пересобранный busybox с mkfs.vfat — с�
 config/       a13-retro-keys.cfg (автоконфиг кнопок)
 scripts/      сборка ядра/RetroArch/образа + apply_a13.sh (интеграция в дерево Lakka)
 device/       интеграция проекта Allwinner/A13_4C (options, linux.conf, bootloader)
+patches/      патчи ядра (zram ARM-порт, sunxi USB gadget) + fex-set-usb-device.py (см. patches/README.md)
 docs/         STATUS.md, REPORT.md, BRIEF.md — история/анализ
 stock/        информация о референсном образе 20240628.img (нужен для сборки, см. BUILD.md)
 ```
@@ -95,5 +99,11 @@ stock/        информация о референсном образе 202406
   RetroArch использует `input_joypad_driver="linuxraw"` (читает `/dev/input/jsX`).
 - Bluetooth/аудио‑выход зависят от наличия железа; Bluetooth отключён (`bluetooth_driver="null"`).
 - Меню‑только старт без контента: дедлок устранён патчем `sunxi_set_texture_enable()`.
+- **Игры не запускаются** (2026-10-09): ядро находится и контент грузится, но сразу выгружается
+  (`Content ran for 0 seconds`) — на fceumm/NES и snes9x2005/SNES. Проблема в пути запуска
+  контента (`sunxi_gfx.c`); для отладки — `MODE=test` (прямой запуск ядро+ROM мимо меню).
+- **USB-консоль/карта не работают**: UDC (`sw_usb_udc`) регистрируется, но композит `g_acm_ms`
+  не встаёт (`unable to autoconfigure all endpoints`) — ограничение sunxi `sw_udc`
+  (см. `patches/README.md`).
 
 Лицензии компонентов — согласно исходным проектам (Linux GPLv2, RetroArch GPLv3, Lakka/LibreELEC).

@@ -69,11 +69,6 @@ static void a13_pin_input_pullup(unsigned port, unsigned pin)
 static void a13_poll(unsigned long __unused)
 {
 	unsigned i;
-	static int _dbg = 0;
-	if ((_dbg % 100) == 0)
-		pr_info("a13keys: PE=%08x PB=%08x (dbg %d)\n",
-			port_dat(PORT_PE), port_dat(PORT_PB), _dbg);
-	_dbg++;
 	for (i = 0; i < NUM_BTNS; i++) {
 		struct a13_btn *b = &a13_buttons[i];
 		int pressed = !((port_dat(b->port) >> b->pin) & 1u);   /* active low */
@@ -84,7 +79,6 @@ static void a13_poll(unsigned long __unused)
 				a13_state &= ~(1u << i);
 			input_report_key(a13_input, b->code, pressed);
 			input_sync(a13_input);
-			pr_info("a13keys: report code=%u pressed=%d\n", b->code, pressed);
 		}
 	}
 	mod_timer(&a13_timer, jiffies + msecs_to_jiffies(10));

@@ -1,0 +1,11 @@
+--- drivers/staging/zram/Kconfig.orig	2026-10-09 18:37:55.742881576 +0500
++++ drivers/staging/zram/Kconfig	2026-10-09 18:38:12.033533551 +0500
+@@ -2,7 +2,7 @@
+ 	tristate "Compressed RAM block device support"
+ 	# X86 dependency is because zsmalloc uses non-portable pte/tlb
+ 	# functions
+-	depends on BLOCK && SYSFS && X86
++	depends on BLOCK && SYSFS
+ 	select ZSMALLOC
+ 	select LZO_COMPRESS
+ 	select LZO_DECOMPRESS

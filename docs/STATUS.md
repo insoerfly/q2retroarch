@@ -630,3 +630,46 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
 
 ### Репозиторий
 - Всё для самостоятельной сборки выложено: https://github.com/insoerfly/q2retroarch
+
+---
+
+## Обновление 6 (2026-10-09) — zram, чистка логов, фикс конфига ядер, USB (в работе)
+
+### Сделано
+- **zram на ARM** (в этом дереве `zram`/`zsmalloc` помечены `depends on X86`): патчи
+  `patches/0001..0003` (убрал X86, `set_pte`→`set_pte_ext`, `__flush_tlb_one`→`flush_tlb_kernel_page`).
+  Включил `CONFIG_STAGING/ZRAM/ZSMALLOC`. `a13init` активирует swap **128 МБ**
+  (на железе: `zram0 swap on (128M)`).
+- **Убран отладочный спам**: `kernel/a13keys.c` (`PE=… (dbg N)` раз в секунду) и
+  `retroarch/sunxi_gfx.c` (`SUNXIDBG`/`SUNXIFPS`, писались в лог каждый кадр, лог рос до мегабайт).
+- **`a13init` генерирует ЧИСТЫЙ `retroarch.cfg`** (без копии `/etc/retroarch.cfg`).
+  Раньше копия стока + дописывание давали **дубли ключей** (`libretro_directory="/tmp/cores"`
+  и наш `/usr/lib/libretro`; `assets_directory=/tmp/*`), из-за чего RetroArch не находил ядра.
+  Теперь:
+  - `libretro_directory = "/usr/lib/libretro"`
+  - `libretro_info_path = "/usr/lib/libretro"`
+- **pcsx_rearmed — low-mem** (`TARGET_SIZE_2 = 23`, кэш dynarec 8 МБ вместо 16) в `SYSTEM`.
+- **FEX Q2** (`bootloader/script_q2.bin`, 29096 б): `target.boot_clock = 912`,
+  `usbc0.usb_port_type = 0` (DEVICE). Скрипт правки — `patches/fex-set-usb-device.py`.
+
+### USB-гейджет (ACM + Mass Storage) — НЕ ДОВЕДЁН
+- `USB0` переведён в **DEVICE** (и FEX, и конфиг ядра); UDC (`sw_usb_udc`) теперь
+  регистрируется (патч `0004` — `g_udc_pdev` в device-only; FEX `usb_port_type=DEVICE`).
+- `acm_ms` не привязывался из-за `max_speed=0` — патч `0005` (`.max_speed = USB_SPEED_HIGH`).
+- Но bind всё равно падает: **`g_acm_ms gadget: unable to autoconfigure all endpoints`**
+  (`-ENOTSUPP`). Причина: у sunxi `sw_udc` endpoints заданы жёстко (`bEndpointAddress`)
+  и не проходят `usb_ep_autoconfig` — нужно доработать UDC. Итог: консоль/карта по USB
+  пока **не поднимаются**; путь оставлен в ядре (модуль в initramfs), но не активен.
+
+### Открытая проблема: игры не запускаются
+- RetroArch **находит ядра** (фикс конфига выше) и **контент грузится**, но затем
+  `[Core]: Content ran for a total of: 0 seconds` → `Unloading core` и система виснет.
+  Воспроизводится на **fceumm+NES** и **snes9x2005+SNES** — то есть не ROM/ядро,
+  а путь запуска контента (`sunxi_gfx.c`).
+- Для отладки добавлен режим `MODE=test` в `a13init`: при файле `/flash/MODE=test`
+  RetroArch стартует **напрямую** с ядром и ROM (мимо меню), пишет подробный `RA.LOG`.
+
+### Артефакты
+- Патчи ядра: `patches/` (см. `patches/README.md`).
+- Обновлённые исходники: `kernel/a13keys.c`, `kernel/kernel.config`, `retroarch/sunxi_gfx.c`,
+  `initramfs/a13init`, `bootloader/script_q2.bin`.

@@ -1,0 +1,18 @@
+acm_ms: set max_speed (fix "Invalid driver ... speed 0" in sw_udc bind)
+
+The sunxi sw_udc bind check requires driver->max_speed >= USB_SPEED_FULL.
+composite.c computes composite_driver.max_speed = min(HIGH, driver->max_speed);
+acm_ms did not set max_speed (0), so the min became 0 and bind failed with
+ERR: Invalid driver: ... speed 0 -> g_acm_ms failed to start (-EINVAL / -ENOTSUPP).
+
+Apply by inserting one line in drivers/usb/gadget/acm_ms.c:
+
+--- a/drivers/usb/gadget/acm_ms.c
++++ b/drivers/usb/gadget/acm_ms.c
+@@ static struct usb_composite_driver acm_ms_driver = {
+ 	.name		= "g_acm_ms",
+ 	.dev		= &device_desc,
+ 	.strings	= dev_strings,
++	.max_speed	= USB_SPEED_HIGH,
+ 	.unbind		= __exit_p(acm_ms_unbind),
+ };

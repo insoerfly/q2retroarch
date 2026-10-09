@@ -37,6 +37,17 @@ $BB mount -t sysfs sysfs /newroot/sys 2>/dev/null
 $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /newroot/flash 2>/dev/null
 $BB mount -t debugfs none /sys/kernel/debug 2>/dev/null
 
+# zram swap (compressed RAM; kernel 3.4 zram/zsmalloc ported to ARM)
+if [ -e /newroot/sys/block/zram0/disksize ]; then
+  echo $((128 * 1024 * 1024)) > /newroot/sys/block/zram0/disksize 2>/dev/null
+  $BB chroot /newroot /usr/sbin/mkswap /dev/zram0 >/dev/null 2>&1
+  if $BB chroot /newroot /usr/sbin/swapon /dev/zram0 >/dev/null 2>&1; then
+    log "zram0 swap on (128M)"
+  else
+    log "zram0 swap FAILED"
+  fi
+fi
+
 # storage: a big FAT partition for games/settings (uses free space on the card)
 $BB mkdir -p /newroot/storage
 STORAGE=""
@@ -75,11 +86,22 @@ $BB mkdir -p /newroot/storage/.config/retroarch /newroot/storage/roms /newroot/s
 $BB mkdir -p /newroot/tmp/assets /newroot/tmp/cores /newroot/tmp/system /newroot/tmp/joypads /newroot/tmp/overlays /newroot/tmp/shaders /newroot/tmp/database
 $BB mkdir -p /newroot/run/libreelec /newroot/retroarch /newroot/var/lib /newroot/var/log
 
+# USB composite gadget: serial console (ttyGS0) + SD mass storage (rw)
+KO=/g_acm_ms.ko
+[ -f "$KO" ] || KO=/flash/g_acm_ms.ko
+if [ -f "$KO" ]; then
+  $BB insmod "$KO" file="${STORAGE:-/dev/mmcblk0p3}" ro=0 luns=1 2>/dev/null \
+    && log "usb: g_acm_ms (console + mass-storage ${STORAGE:-p3} rw)" \
+    || log "usb: g_acm_ms insmod failed"
+fi
+if [ -c /dev/ttyGS0 ]; then
+  ( while true; do $BB chroot /newroot /bin/sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1; $BB sleep 1; done ) &
+fi
+
 CFG=/newroot/storage/.config/retroarch/retroarch.cfg
 if [ ! -f "$CFG" ]; then
-  log "first run: creating $CFG"
-  cp /newroot/etc/retroarch.cfg "$CFG" 2>/dev/null || : > "$CFG"
-  $BB cat >> "$CFG" <<'OV'
+  log "first run: creating $CFG (clean config, no defaults to avoid duplicate keys)"
+  $BB cat > "$CFG" <<'OV'
 video_driver = "sunxi"
 video_threaded = "false"
 input_driver = "udev"
@@ -90,6 +112,7 @@ menu_driver = "rgui"
 video_fullscreen = true
 config_save_on_exit = true
 libretro_directory = "/usr/lib/libretro"
+libretro_info_path = "/usr/lib/libretro"
 assets_directory = "/usr/share/retroarch-assets"
 system_directory = "/usr/share/retroarch-system"
 savefile_directory = "/storage/saves"
@@ -120,6 +143,22 @@ case "$MODE" in
   *scan*)
     log "MODE=scan -> btnscan"
     [ -x /flash/btnscan ] && /flash/btnscan > /dev/console 2>&1
+    while true; do $BB sleep 3600; done
+    ;;
+  *test*)
+    ROM=""
+    for f in /newroot/storage/roms/nes/*.nes; do [ -f "$f" ] && ROM=${f#/newroot} && break; done
+    CORE=/usr/lib/libretro/fceumm_libretro.so
+    if [ -z "$ROM" ]; then
+      for f in /newroot/storage/roms/snes/*.smc; do [ -f "$f" ] && ROM=${f#/newroot} && break; done
+      [ -n "$ROM" ] && CORE=/usr/lib/libretro/snes9x2005_libretro.so
+    fi
+    log "MODE=test core=$CORE rom=$ROM"
+    HOME=/storage LD_LIBRARY_PATH=/usr/lib:/tmp/cores PATH=/usr/bin:/bin:/sbin:/usr/sbin \
+      $BB chroot /newroot /flash/retroarch -L "$CORE" "$ROM" --verbose > /newroot/flash/RA.LOG 2>&1
+    log "MODE=test retroarch exited rc=$?"
+    $BB dmesg > /flash/DMESG.txt 2>/dev/null
+    $BB sync
     while true; do $BB sleep 3600; done
     ;;
 esac

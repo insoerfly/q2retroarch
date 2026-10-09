@@ -1,0 +1,21 @@
+--- drivers/usb/sunxi_usb/udc/sw_udc.c.orig	2026-10-09 19:51:33.885106489 +0500
++++ drivers/usb/sunxi_usb/udc/sw_udc.c	2026-10-09 19:51:52.518629435 +0500
+@@ -72,9 +72,7 @@
+ static u32 is_controller_alive = 0;
+ static u8 is_udc_enable = 0; /* is udc enable by gadget? */
+ 
+-#ifdef CONFIG_USB_SW_SUNXI_USB0_OTG
+ static struct platform_device *g_udc_pdev = NULL;
+-#endif
+ 
+ static u8 crq_bRequest = 0;
+ static const unsigned char TestPkt[54] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xAA,
+@@ -3500,6 +3498,8 @@
+ 	the_controller = udc;
+ 	platform_set_drvdata(pdev, udc);
+ 
++	g_udc_pdev = pdev;
++
+ 	sw_udc_disable(udc);
+ 	sw_udc_reinit(udc);
+ 

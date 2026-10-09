@@ -1,0 +1,11 @@
+--- drivers/staging/zsmalloc/Kconfig.orig	2026-10-09 18:37:55.752258859 +0500
++++ drivers/staging/zsmalloc/Kconfig	2026-10-09 18:38:12.035102150 +0500
+@@ -3,7 +3,7 @@
+ 	# X86 dependency is because of the use of __flush_tlb_one and set_pte
+ 	# in zsmalloc-main.c.
+ 	# TODO: convert these to portable functions
+-	depends on X86
++	depends on BLOCK
+ 	default n
+ 	help
+ 	  zsmalloc is a slab-based memory allocator designed to store

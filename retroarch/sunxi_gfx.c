@@ -381,7 +381,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
       goto error;
 
    ctx->fd_disp = open("/dev/disp", O_RDWR);
-   fprintf(stderr, "SUNXIDBG fd_disp=%d\n", ctx->fd_disp);
 
    /* maybe it's even not a sunxi hardware */
    if (ctx->fd_disp < 0)
@@ -390,7 +389,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
    /* version check */
    tmp     = SUNXI_DISP_VERSION;
    version = ioctl(ctx->fd_disp, DISP_CMD_VERSION, &tmp);
-   fprintf(stderr, "SUNXIDBG version=%d\n", version);
    if (version < 0)
    {
        close(ctx->fd_disp);
@@ -398,7 +396,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
    }
 
    ctx->fd_fb = open(device, O_RDWR);
-   fprintf(stderr, "SUNXIDBG fd_fb=%d\n", ctx->fd_fb);
 
    if (ctx->fd_fb < 0)
    {
@@ -414,7 +411,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
       goto error;
    }
 
-   fprintf(stderr, "SUNXIDBG res=%dx%d bpp=%d smem_start=%lx smem_len=%lx pixclock=%d\n", fb_var.xres, fb_var.yres, fb_var.bits_per_pixel, (unsigned long)fb_fix.smem_start, (unsigned long)fb_fix.smem_len, (int)fb_var.pixclock);
    ctx->xres               = fb_var.xres;
    ctx->yres               = fb_var.yres;
    ctx->bits_per_pixel     = fb_var.bits_per_pixel;
@@ -435,7 +431,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
    }
 
    /* mmap framebuffer memory */
-   fprintf(stderr, "SUNXIDBG fb_size=%u gfx_layer_size=%u\n", (unsigned)ctx->framebuffer_size, (unsigned)ctx->gfx_layer_size);
    ctx->framebuffer_addr = (uint8_t *)mmap(0, ctx->framebuffer_size,
 	 PROT_READ | PROT_WRITE,
 	 MAP_SHARED, ctx->fd_fb, 0);
@@ -457,7 +452,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
       goto error;
    }
 
-   fprintf(stderr, "SUNXIDBG layer_hdl id=%d\n", ctx->gfx_layer_id);
    if (sunxi_layer_reserve(ctx) < 0)
    {
       close(ctx->fd_fb);
@@ -465,7 +459,6 @@ static sunxi_disp_t *sunxi_disp_init(const char *device)
       goto error;
    }
 
-   fprintf(stderr, "SUNXIDBG disp_init OK\n");
    return ctx;
 
 error:
@@ -695,7 +688,6 @@ static void sunxi_gfx_free(void *data)
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
 
    /* A13FIX: always stop and join the vsync thread we keep alive. */
-   fprintf(stderr, "SUNXIDBG gfx_free joining vsync\n");
    _dispvars->keep_vsync = false;
    sthread_join(_dispvars->vsync_thread);
 
@@ -713,7 +705,6 @@ static void sunxi_gfx_free(void *data)
 
 static void sunxi_update_main(const void *frame, struct sunxi_video *_dispvars)
 {
-   { static int _c=0; if(_c<3){ fprintf(stderr,"SUNXIDBG update_main #%d src=%ux%u pitch=%u\n",_c,_dispvars->src_width,_dispvars->src_height,_dispvars->src_pitch); _c++; } }
    slock_lock(_dispvars->pending_mutex);
 
    if (_dispvars->pageflip_pending)
@@ -772,10 +763,9 @@ static void sunxi_setup_scale (void *data,
    xpos = (_dispvars->sunxi_disp->xres - visible_width) / 2;
 
    /* setup layer window */
-   fprintf(stderr, "SUNXIDBG scale src=%ux%u ar=%x win_x=%u win_w=%u\n", width, height, (unsigned)(_dispvars->aspect_ratio*1000), xpos, visible_width);
    sunxi_layer_set_output_window(_dispvars->sunxi_disp, xpos, 0, visible_width, _dispvars->sunxi_disp->yres);
 
-   { int _r=sunxi_layer_show(_dispvars->sunxi_disp); fprintf(stderr,"SUNXIDBG layer_show rc=%d\n",_r); }
+   sunxi_layer_show(_dispvars->sunxi_disp);
 }
 
 static bool sunxi_gfx_frame(void *data, const void *frame, unsigned width,
@@ -797,7 +787,6 @@ static bool sunxi_gfx_frame(void *data, const void *frame, unsigned width,
    }
 
 #ifdef HAVE_MENU
-   { static int _fc=0; static struct timeval _t0; struct timeval _t; gettimeofday(&_t,0); if(_fc==0)_t0=_t; if((_fc%60)==0){ double _ms=(_t.tv_sec-_t0.tv_sec)*1000.0+(_t.tv_usec-_t0.tv_usec)/1000.0; fprintf(stderr,"SUNXIFPS frame=%d t=%.0fms fps=%.1f\n",_fc,_ms,(_ms>0)?(_fc*1000.0/_ms):0.0);} _fc++; }
    menu_driver_frame(menu_is_alive, video_info);
 #endif
 
@@ -857,7 +846,6 @@ static bool sunxi_gfx_set_shader(void *data,
 static void sunxi_set_texture_enable(void *data, bool state, bool full_screen)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
-   fprintf(stderr, "SUNXIDBG set_texture_enable state=%d menu_active=%d\n", (int)state, (int)_dispvars->menu_active);
    /* A13FIX: do NOT join/create the vsync thread here; it deadlocks when the
     * menu activates. Keep the thread alive for the driver's lifetime. */
    _dispvars->menu_active = state;

@@ -89,3 +89,24 @@ Init (`initramfs/a13init`) при первом старте: если нет б�
 - Кнопки: автоконфиг `joypads/a13-retro-keys.cfg` (js-индексы) + прямые биндинги в init.
 - Раскладка Q2 (проверена эмпирически): стик PE11/PE10/PE9/PE8 = ↑/↓/←/→,
   A=PE2, B=PE4, X=PE3, Y=PE5, L=PE7, R=PE6, Start=PE0, Select=PB16, Menu=PE1.
+
+## 6. Доп. правки ядра/прошивки (zram, USB, FEX, low-mem pcsx)
+
+См. `patches/README.md`. Кратко:
+
+- **zram** (`patches/0001..0003`): в дереве `zram`/`zsmalloc` помечены `depends on X86` —
+  уберите `X86` и портируйте `zsmalloc-main.c` (`set_pte`→`set_pte_ext`,
+  `__flush_tlb_one`→`flush_tlb_kernel_page`). В `.config`: `CONFIG_STAGING=y`,
+  `CONFIG_ZRAM=y`, `CONFIG_ZSMALLOC=y`. `a13init` делает swap **128 МБ** на `/dev/zram0`.
+- **USB-гейджет** (`patches/0004`, `0005`, FEX): USB0 → **DEVICE** (конфиг ядра и FEX
+  `usbc0.usb_port_type=0`), `CONFIG_USB_GADGET=y`, `CONFIG_USB_G_ACM_MS=m`,
+  `CONFIG_USB_SW_SUNXI_UDC0=y`; модуль `g_acm_ms.ko` кладётся в initramfs.
+  **Статус: НЕ доведён** — sunxi UDC не проходит `usb_ep_autoconfig` (композит не встаёт).
+- **FEX Q2** — `bootloader/script_q2.bin` (29096 б): `target.boot_clock=912`,
+  `usbc0.usb_port_type=0` (правится `patches/fex-set-usb-device.py`).
+- **pcsx_rearmed low-mem**: в `libpcsxcore/new_dynarec/assem_arm.h` `TARGET_SIZE_2=23`
+  (кэш dynarec 8 МБ вместо 16), сборка
+  `make -f Makefile.libretro HAVE_NEON_ASM=1 DYNAREC=ari64 ARCH=arm BUILTIN_GPU=neon`,
+  затем `.so` → `SYSTEM/usr/lib/libretro`.
+- **Отладка игр**: файл `MODE` на FAT со словом `test` — `a13init` запустит ядро+ROM
+  **напрямую** (мимо меню) и запишет подробный `RA.LOG`.
