@@ -715,3 +715,43 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
 ### Образ
 - Пересобрано и влито в `lakka-full.img`: ядро (initramfs с новым `a13init`), RetroArch,
   FEX (PC10) в `res/DATA02`/`res/ext/DATA02`/`script.bin`.
+
+---
+
+## Обновление 8 (2026-10-09) — кнопка Menu, PSX/BIOS, вендорские ядра, звук
+
+### Меню / кнопка Menu
+- Запуск игры из меню работает (фикс `pthread_join`, Обновление 7). Кнопка **Menu/Home**
+  (`input_enable_hotkey_btn="8"` + `input_menu_toggle_btn="8"`, js-кнопка 8 = `BTN_MODE`)
+  открывает Quick Menu (сейвстейты, выход). Подтверждено на железе.
+
+### PSX / BIOS
+- `system_directory` переключён с read-only `/usr/share/retroarch-system` на **`/storage/bios`**.
+  BIOS кладётся как `scphXXXX.bin` (ядро ищет именно такое имя); в логе
+  `found BIOS file: scph7003.bin`. Исходное имя (`Sony PlayStation BIOS (...SCPH-7003).bin`)
+  ядро не распознавало.
+- Тем не менее наш `pcsx_rearmed` при запуске игры **вылетает** (на экране приставки видна
+  консоль ядра/fbcon). В логах — ни segfault, ни OOM. Добавлено логирование кода выхода:
+  `RETRO.LOG: retroarch exited rc=<N>` (139=SIGSEGV, 137=OOM/SIGKILL) — для диагностики.
+
+### Вендорские ядра
+- Из вендорского образа извлечены все эмуляторы → `vendor-cores/` (+ на карте `E:\vendor-cores`).
+- **Только `libemulpsx.so` — настоящий libretro-ядро** (pcsx_rearmed v1.9, `retro_*`); остальные
+  (`libemulnes/sfc/md/gba/mame2003p/fbalpha/a26/a78`, `libfceumm`) — кастомный API вендора.
+- В SYSTEM добавлен **отдельный** вендорский PSX: `vendpsx_libretro.so` + `.info` с
+  `display_name = "vend Sony - PlayStation (pcsx_rearmed)"`. Наш `pcsx_rearmed` не тронут.
+  Вендорский тоже «нормально не открылся» (проверяется).
+
+### Звук
+- dmesg спамит **`dma0: IRQ with no loaded buffer?`** (legacy DMA, `arch/arm/plat-sunxi/dma.c`;
+  канал 0 — аудио-кодек). Вероятная причина отсутствия звука. Для проверки гипотезы
+  («звук роняет игры») временно `audio_driver="null"`.
+
+### USB-консоль
+- Гейджет поднимается, но Windows-порт не открывается (переконфиг ~20 с, LUN «no medium») —
+  см. Обновление 7.
+
+### Образ / карта
+- SYSTEM пересобран (+`vendpsx`). При заливке SYSTEM в образ mtools повредил FAT — вылечено
+  `dosfsck -a` и повторной заливкой. Карта и образ синхронизированы.
+- Вендорские ядра выложены в репо (`vendor-cores/`, коммит `02f000a`).

@@ -104,9 +104,10 @@ stock/        информация о референсном образе 202406
   софтверный `sunxi`-драйвер не даёт; RetroArch откатывается на `rgui`.
 - **USB-консоль**: гейджет поднимается (в Windows появляется COM-порт), но открыть его нельзя —
   устройство переконфигурируется каждые ~20 с, а LUN mass-storage «no medium».
-- **Аудио**: ALSA открывается, но звука нет — пин усилителя (PA). Пока отложено.
-- **USB-консоль/карта не работают**: UDC (`sw_usb_udc`) регистрируется, но композит `g_acm_ms`
-  не встаёт (`unable to autoconfigure all endpoints`) — ограничение sunxi `sw_udc`
-  (см. `patches/README.md`).
+- **Звук**: ALSA открывается, но звука нет; в dmesg спам `dma0: IRQ with no loaded buffer?`
+  (legacy DMA, канал 0 = аудио-кодек). Пин усилителя (PA) — см. `docs/STATUS.md`.
+- **PSX**: BIOS подключается (`system_directory="/storage/bios"`, `scph*.bin`), но наш
+  `pcsx_rearmed` при запуске игры вылетает. Добавлен отдельный вендорский core `vendpcsx`
+  (см. `vendor-cores/`).
 
 Лицензии компонентов — согласно исходным проектам (Linux GPLv2, RetroArch GPLv3, Lakka/LibreELEC).
