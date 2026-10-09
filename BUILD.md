@@ -130,3 +130,13 @@ Init (`initramfs/a13init`) при первом старте: если нет б�
   крошки `SUNXI_DBG`/`SUNXI_DBGS` (пишут в stderr с `fflush`/`fsync`, чтобы пережили фриз).
 - **Сборка RetroArch**: `make V=1 HAVE_LAKKA=1 HAVE_ZARCH=0 HAVE_WIFI=1 HAVE_BLUETOOTH=1
   HAVE_FREETYPE=1 -j$(nproc)` в `retroarch-ad89b0c`; бинарь → `out/retroarch-sunxi` и в образ.
+
+## 8. PSX: downscale кадра до панели (2026-10-09)
+
+- `sunxi`-драйвер блитил кадр **1:1** в fb (320×720×32). Кадры крупнее панели
+  (PSX hi-res 640×478 / 512×240) переполняли fb → SIGSEGV в NEON-блите pixman. В
+  `retroarch/sunxi_gfx.c` добавлен целочисленный downscale до ≤320×240 с раздельными
+  коэффициентами X/Y и усреднением блока, плюс guard на NULL-кадр. SNES/мелкие ядра идут
+  как раньше (их масштабирует слой DISP).
+- Отладочный `crashtrace.so` (`LD_PRELOAD`, кладётся в `/flash/crashtrace.so`) печатает
+  бэктрейс при SIGSEGV; адреса в модуле считать с учётом загрузки non-PIE EXEC по `0x8000`.

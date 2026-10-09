@@ -107,8 +107,8 @@ stock/        информация о референсном образе 202406
   переинициализировал композит и порт не открывался.
 - **Звук**: ALSA открывается, но звука нет; в dmesg спам `dma0: IRQ with no loaded buffer?`
   (legacy DMA, канал 0 = аудио-кодек). Пин усилителя (PA) — см. `docs/STATUS.md`.
-- **PSX**: BIOS подключается (`system_directory="/storage/bios"`, `scph*.bin`), но наш
-  `pcsx_rearmed` при запуске игры вылетает. Добавлен отдельный вендорский core `vendpcsx`
-  (см. `vendor-cores/`).
+- **PSX**: BIOS подключается (`system_directory="/storage/bios"`, `scph*.bin`). Крэш нашего
+  `pcsx_rearmed` на кадрах крупнее панели (hi-res 640×478) исправлен — downscale в
+  `retroarch/sunxi_gfx.c`. Есть отдельный вендорский core `vendpcsx` (см. `vendor-cores/`).
 
 Лицензии компонентов — согласно исходным проектам (Linux GPLv2, RetroArch GPLv3, Lakka/LibreELEC).

@@ -545,6 +545,12 @@ struct sunxi_video
    unsigned int src_bpp;
    unsigned int src_bytes_per_pixel;
    unsigned int src_pixels_per_line;
+   /* A13FIX: downscale for cores whose frame is larger than the panel */
+   unsigned int out_width;
+   unsigned int out_height;
+   unsigned int scale_x;       /* integer decimation factors (1 = none) */
+   unsigned int scale_y;
+   void        *scale_buf;
    unsigned int dst_pitch;
    unsigned int dst_pixels_per_line;
    unsigned int bytes_per_pixel;
@@ -743,6 +749,17 @@ static void sunxi_gfx_free(void *data)
 
 static void sunxi_update_main(const void *frame, struct sunxi_video *_dispvars)
 {
+   const void *src     = frame;
+   unsigned    width   = _dispvars->src_width;
+   unsigned    height  = _dispvars->src_height;
+   unsigned    stride  = _dispvars->src_pixels_per_line;
+   unsigned    bpp     = _dispvars->bytes_per_pixel;
+
+   /* A13FIX: some cores (PSX hi-res) hand us a NULL frame before it exists;
+    * the NEON blit would then dereference NULL and crash. */
+   if (!frame)
+      return;
+
    slock_lock(_dispvars->pending_mutex);
 
    if (_dispvars->pageflip_pending)
@@ -750,20 +767,99 @@ static void sunxi_update_main(const void *frame, struct sunxi_video *_dispvars)
 
    slock_unlock(_dispvars->pending_mutex);
 
+   /* A13FIX: the framebuffer is only panel-sized (xres wide, a few pages
+    * tall). Cores wider/taller than the panel (e.g. PSX 640x478 on a 320x240
+    * panel) must be decimated, otherwise the 1:1 NEON blit writes past the
+    * framebuffer and crashes. */
+   if (_dispvars->scale_x > 1 || _dispvars->scale_y > 1)
+   {
+      unsigned sx = _dispvars->scale_x;
+      unsigned sy = _dispvars->scale_y;
+      unsigned ow = _dispvars->out_width;
+      unsigned oh = _dispvars->out_height;
+      unsigned x, y;
+
+      if (!_dispvars->scale_buf)
+         _dispvars->scale_buf = malloc((size_t)_dispvars->sunxi_disp->xres *
+               _dispvars->sunxi_disp->yres * bpp);
+
+      if (_dispvars->scale_buf)
+      {
+         if (bpp == 2)
+         {
+            const uint16_t *s = (const uint16_t*)frame;
+            uint16_t *d = (uint16_t*)_dispvars->scale_buf;
+            for (y = 0; y < oh; y++)
+            {
+               for (x = 0; x < ow; x++)
+               {
+                  unsigned r = 0, g = 0, b = 0, n = 0, dx, dy;
+                  for (dy = 0; dy < sy; dy++)
+                     for (dx = 0; dx < sx; dx++)
+                     {
+                        uint16_t p = s[(y * sy + dy) * stride + (x * sx + dx)];
+                        r += (p >> 11) & 0x1f;
+                        g += (p >>  5) & 0x3f;
+                        b +=  p        & 0x1f;
+                        n++;
+                     }
+                  if (!n) n = 1;
+                  d[y * ow + x] = (uint16_t)(((r / n) << 11) | ((g / n) << 5) | (b / n));
+               }
+            }
+         }
+         else
+         {
+            const uint32_t *s = (const uint32_t*)frame;
+            uint32_t *d = (uint32_t*)_dispvars->scale_buf;
+            for (y = 0; y < oh; y++)
+            {
+               for (x = 0; x < ow; x++)
+               {
+                  unsigned r = 0, g = 0, b = 0, n = 0, dx, dy;
+                  for (dy = 0; dy < sy; dy++)
+                     for (dx = 0; dx < sx; dx++)
+                     {
+                        uint32_t p = s[(y * sy + dy) * stride + (x * sx + dx)];
+                        r += (p >> 16) & 0xff;
+                        g += (p >>  8) & 0xff;
+                        b +=  p        & 0xff;
+                        n++;
+                     }
+                  if (!n) n = 1;
+                  d[y * ow + x] = ((r / n) << 16) | ((g / n) << 8) | (b / n);
+               }
+            }
+         }
+         src    = _dispvars->scale_buf;
+         width  = ow;
+         height = oh;
+         stride = ow;
+      }
+      else
+      {
+         /* Out of memory: clamp to the panel to avoid an overflow. */
+         if (width  > (unsigned)_dispvars->sunxi_disp->xres)
+            width  = _dispvars->sunxi_disp->xres;
+         if (height > (unsigned)_dispvars->sunxi_disp->yres)
+            height = _dispvars->sunxi_disp->yres;
+      }
+   }
+
    /* Frame blitting */
    pixman_blit(
-      _dispvars->src_width,
-      _dispvars->src_height,
+      width,
+      height,
       _dispvars->nextPage->address,
       _dispvars->dst_pixels_per_line,
-      (uint16_t*)frame,
-      _dispvars->src_pixels_per_line
+      (uint16_t*)src,
+      stride
       );
 
    /* Issue pageflip. Will flip on next vsync. */
    sunxi_layer_set_rgb_input_buffer(_dispvars->sunxi_disp, _dispvars->sunxi_disp->bits_per_pixel,
       _dispvars->nextPage->offset,
-      _dispvars->src_width, _dispvars->src_height, _dispvars->sunxi_disp->xres);
+      width, height, _dispvars->sunxi_disp->xres);
 
    slock_lock(_dispvars->pending_mutex);
    _dispvars->pageflip_pending = true;
@@ -787,14 +883,29 @@ static void sunxi_setup_scale (void *data,
    /* Pixels per line */
    _dispvars->src_pixels_per_line = _dispvars->src_pitch/_dispvars->bytes_per_pixel;
 
+   /* A13FIX: the framebuffer is only panel-sized; choose integer decimation
+    * factors per axis so the stored frame fits. Keeping the axes independent
+    * preserves vertical resolution, e.g. 512x240 -> 256x240 (not 256x120). */
+   {
+      unsigned int sx = 1, sy = 1;
+      while ((width  / sx) > (unsigned)_dispvars->sunxi_disp->xres)  sx++;
+      while ((height / sy) > (unsigned)_dispvars->sunxi_disp->yres) sy++;
+      _dispvars->scale_x    = sx;
+      _dispvars->scale_y    = sy;
+      _dispvars->out_width  = width  / sx;
+      _dispvars->out_height = height / sy;
+   }
+   if (_dispvars->out_width  == 0) _dispvars->out_width  = 1;
+   if (_dispvars->out_height == 0) _dispvars->out_height = 1;
+
    /* Incremental offset that sums up on
     * each previous page offset.
     * Total offset of each page has to
     * be adjusted when internal resolution changes. */
    for (i = 0; i < NUMPAGES; i++)
    {
-      _dispvars->pages[i].offset = (_dispvars->sunxi_disp->yres + i * _dispvars->src_height) * _dispvars->sunxi_disp->xres * 4;
-      _dispvars->pages[i].address = ((uint32_t*) _dispvars->sunxi_disp->framebuffer_addr + (_dispvars->sunxi_disp->yres + i * _dispvars->src_height) * _dispvars->dst_pitch/4);
+      _dispvars->pages[i].offset = (_dispvars->sunxi_disp->yres + i * _dispvars->out_height) * _dispvars->sunxi_disp->xres * 4;
+      _dispvars->pages[i].address = ((uint32_t*) _dispvars->sunxi_disp->framebuffer_addr + (_dispvars->sunxi_disp->yres + i * _dispvars->out_height) * _dispvars->dst_pitch/4);
    }
 
    visible_width = _dispvars->sunxi_disp->yres * _dispvars->aspect_ratio;
