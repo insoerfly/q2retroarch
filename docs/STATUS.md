@@ -888,10 +888,38 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
   открывает устройство и «играет», но звука нет.
 
 **Вывод**: софт-путь кодека/миксера/PA/DMA-конфига выглядит правильным, но данных в DAC
-нет. Нужен дамп регистров кодека (`0x01c22c00`) во время воспроизведения (в ядре нет
-`sunxi_dump`/`devmem`) — собрать маленький диагностический модуль. Либо сравнение с
+нет. Нужен дамп регистров кодека (`0x01c22c00`) во время воспроизведения — собран
+диагностический инструмент (`tools/codecreg.c`, см. ниже). Либо сравнение с
 вендорским ядром (у нас только бинарь). **Отложено.**
 
 ### Инструменты
 - `fex-set-cpu.py` (смена `boot_clock` в FEX), `tools/build_cores_opt.sh`,
   `tools/build_pcsx_opt.sh`.
+
+---
+
+## Обновление 14 (2026-10-10) — заливка ядра на карту + диагностика звука
+
+### Ядро на карте обновлено
+`boot.scr` грузит **`res/DATA01`** (uImage) + `res/DATA02` (FEX), а не `KERNEL`. Залил
+новое ядро (CPU-фикс 912 МГц в `a13init`) на карту:
+- `E:\res\DATA01` = `C0B14BC3FB9490F7D893EB08019AD696` (lakka-uImage, 6381328 Б) ← было
+  `39D45F3C…`;
+- `E:\KERNEL` = `6D021749B5CFB631FA6F9B370B2D7676` (lakka-zImage, 6381264 Б);
+- FEX `E:\res\DATA02` / `E:\script.bin` = `260DE79A…` (PC10 / boot_clock=912) — уже верный.
+
+### Диагностика кодека (CE-codec)
+База кодека `SW_PA_ADDA_IO_BASE = 0x01c22c00` (`plat/platform.h`), `CONFIG_DEVMEM=y`,
+модули есть. Регистры (`sound/soc/sunxi/sunxi-codec.h`):
+`DPC=0x00, FIFOC=0x04, FIFOS=0x08, TXDATA=0x0c, ACTL=0x10, TUNE=0x14, DEBUG=0x18, TXCNT=0x30`.
+
+- `tools/codecreg.c` → `tools/build_codecreg.sh` собирает статический ARM-бинарь
+  (`mmap` `/dev/mem` @0x01c22c00, печатает DPC/FIFOC/FIFOS(+счётчик)/ACTL/TUNE/DEBUG/TXCNT,
+  режим повтора `codecreg <loops> <delay_ms>`).
+- `tools/audio_dbg.sh` (запуск на устройстве): печатает карты ALSA/миксер, снимает регистры
+  **до / во время / после** воспроизведения (`aplay button_1.wav` либо `speaker-test`),
+  пишет всё в `/flash/AUDIODBG.LOG`.
+- На карту залито: `E:\codecreg` (414736 Б, static ARM, stripped), `E:\audio_dbg.sh`.
+
+Запуск на устройстве: `sh /flash/audio_dbg.sh` → прислать `/flash/AUDIODBG.LOG`
+(или `E:\AUDIODBG.LOG`).
