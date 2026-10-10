@@ -857,3 +857,41 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
   частоты должен стать приемлемым, иначе лучше выключить.
 - **Звук** — кодек/легаси-DMA не подаёт данные (тишина на динамике и 3.5 мм), отдельная
   задача уровня ядра (см. выше); отложено.
+
+---
+
+## Обновление 13 (2026-10-10) — разбор звука (тишина), что проверено
+
+Звук: тишина **и на динамике, и на наушниках (3.5 мм)**. Полностью разобрал тракт
+(`sound/soc/sunxi/sunxi-codec.c` + `arch/arm/plat-sunxi/dma*.c`):
+
+- **Клоки**: `codec_apbclk`(`apb_audio_codec`), `codec_pll2clk`(`audio_pll`),
+  `codec_moduleclk`(`audio_codec`) — берутся и `clk_enable` в probe; в `prepare`
+  выставляются 24.576/22.5792 МГц и делитель `SUNXI_DAC_FIFOC[31:29]`. ОК.
+- **Кодек-регистры** (`codec_play_open`): `DAC_EN`, `DAC_FIFO_FLUSH`, `TX_TRI_LEVEL`,
+  `TX_FIFO_MODE`, `DACAEN_L/R`, `DACPAS`; в START — `DAC_FIFO_FLUSH` + `DAC_DRQ` и снятие
+  `PA_MUTE`. Выглядит корректно.
+- **Миксер**: всё `on`/max (`Master=63`, `Playback Switch=on`, `Ldac/Rdac=on`, `LineL/R=on`).
+  Раньше `Playback` был `off` — включил, не помогло.
+- **PA (усилитель)**: FEX `audio_pa_ctrl` = **PC10** (верный; сток тоже PC10). Не при чём.
+- **DMA**: `codec_play_dma_conf` — `dir=SW_DMA_WDEV`, `drqdst_type=DRQ_TYPE_AUDIO`,
+  `drqsrc_type=D_DRQSRC_SDRAM`, `xfer=D_BHALF_S_BHALF`, `addr=D_FIX_S_INC`. В
+  `dma_route_sun5i.h`: N-путь даёт валидный `n_drqdst_arr[DRQ_TYPE_AUDIO]=N_DRQDST_AUDIOCDAD`,
+  D-путь — `DRQ_INVALID`. Канал `DMACH_NADDA_PLAY` идёт по **N-пути** (в dmesg нет
+  `invalid drq type`), значит DRQ настроен верно → **эта гипотеза отпала**.
+- **Симптом**: в dmesg (раньше, под RetroArch) спам `dma0: IRQ with no loaded buffer?`
+  (`plat-sunxi/dma.c`, `SW_DMALOAD_NONE`) — DMA/IRQ идут, но данные до DAC не доходят.
+- **Вендорский `audio_test`** на нашей системе устройство не открывает
+  (`snd_pcm_open err` / `system_init error`) — ему нужен вендорский libasound/asound.conf,
+  поэтому «как у вендора» этим не проверить.
+- Конфиг RetroArch: `audio_driver="alsa"`; ALSA карта `sunxi-CODEC` есть; `speaker-test`
+  открывает устройство и «играет», но звука нет.
+
+**Вывод**: софт-путь кодека/миксера/PA/DMA-конфига выглядит правильным, но данных в DAC
+нет. Нужен дамп регистров кодека (`0x01c22c00`) во время воспроизведения (в ядре нет
+`sunxi_dump`/`devmem`) — собрать маленький диагностический модуль. Либо сравнение с
+вендорским ядром (у нас только бинарь). **Отложено.**
+
+### Инструменты
+- `fex-set-cpu.py` (смена `boot_clock` в FEX), `tools/build_cores_opt.sh`,
+  `tools/build_pcsx_opt.sh`.
