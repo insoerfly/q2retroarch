@@ -37,6 +37,17 @@ $BB mount -t sysfs sysfs /newroot/sys 2>/dev/null
 $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /newroot/flash 2>/dev/null
 $BB mount -t debugfs none /sys/kernel/debug 2>/dev/null
 
+# CPU: force max frequency. The kernel has only 'userspace'/'conservative'
+# governors; 'userspace' defaults to 384 MHz if nobody sets a speed -> the whole
+# system crawls (Sega/PSX/GBA "slow"). The Q2 FEX asks for 912 MHz; set it and
+# pin min=max so it stays there.
+for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+  echo 912000 > "$c/scaling_max_freq" 2>/dev/null
+  echo 912000 > "$c/scaling_min_freq" 2>/dev/null
+  echo 912000 > "$c/scaling_setspeed" 2>/dev/null
+done
+log "cpu: freq set to 912MHz ($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null))"
+
 # zram swap (compressed RAM; kernel 3.4 zram/zsmalloc ported to ARM)
 if [ -e /newroot/sys/block/zram0/disksize ]; then
   echo $((128 * 1024 * 1024)) > /newroot/sys/block/zram0/disksize 2>/dev/null
