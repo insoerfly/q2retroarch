@@ -1006,3 +1006,25 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
 воспроизводится и вендорским аудиотрактом → это **ядро/кодек/железо** (наш kernel собран
 из Lakka; у вендора свой DATA01). Следующий шаг — диффить наш кодек/PA‑путь с вендорским
 ядром и/или проверять обвязку усилителя динамика.
+
+### FEX audio_pa_ctrl: stock PC10 vs ext PG10 — тоже не помогло
+Разбор FEX (`unpack/FEX_DATA02_stock_dump.txt` vs `_ext_dump.txt`):
+- **stock**: `audio_pa_ctrl = (3, 10, 1, -1, -1, 0)` → **PC10**
+- **ext**: `audio_pa_ctrl = (7, 10, 1, -1, -1, 0)` → **PG10** (порт 7).
+
+Наш card‑FEX (`script.bin`/`res/DATA02`, md5 `260DE79A`) — вариант PC10.
+
+Тест руками (оба пина — выходы, в покое `0`):
+- PC10=1 во время игры → тишина; PC10=0 → тишина.
+- **PG10=1 во время игры** (`PG_DAT=0x00000404`) → **тишина**.
+Итого: ни PC10, ни PG10 динамик не включают.
+
+В ядре PA‑путь трогают три места: `sound/soc/sunxi/sunxi-codec.c` (`gpio_pa_shutdown`),
+`drivers/video/sunxi/disp/disp_tv.c` (читает `audio_para.audio_pa_ctrl`, `[DISP] fetch …
+fail`) и отдельный `drivers/media/pa/sun4i_pa.c` (`/dev/pa_dev`, ioctl PA_OPEN/CLOSE) — но
+`CONFIG_PA_CONFIG` в нашем ядре **не собран** (в `drivers/media/pa/` нет `.o`), и вендорский
+userspace `/dev/pa_dev` не использует (только `plughw:0,0` + `amixer`).
+
+**Итог по динамику:** софт‑пути (кодек PA, PC10/PG10) включены, но звука нет ни в RA, ни в
+вендорском эмуляторе → с высокой вероятностью **железо** (усилитель/динамик) либо отдельный
+регистровый бит внутреннего PA кодека. Рекомендуется проверка обвязки усилителя/пина физически.
