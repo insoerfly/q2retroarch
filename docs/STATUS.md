@@ -976,3 +976,17 @@ bash /mnt/c/Users/INSOER~1/AppData/Local/Temp/opencode/r3x/run_loop.sh
   (единый ли путь с наушниками, нет ли отдельного кодек‑регистра/пина). Вендор грузит свой
   непрозрачный UI (`usr/data/bin/*` защищён), но PA включается именно ядром.
 - Если окажется, что нужен другой GPIO/бит — правка ядра + перезаливка.
+
+### Что делает наш `sunxi-codec.c` с PA (разбор исходника)
+- `gpio_pa_shutdown` (module param, по умолчанию 0) — дескриптор GPIO из FEX
+  `audio_para:audio_pa_ctrl`. В `codec_play_start()` (стр. 411‑414) делается
+  `gpio_write_one_pin_value(gpio_pa_shutdown, 1, "audio_pa_ctrl")` — PA **поднимается**;
+  в `codec_play_stop()` — опускается. Именно это и объясняет наш замер PC10=1 в игре.
+- `codec_play_open()` — `DACAEN_L/R=1`, **`DACPAS=1`** (DAC→PA), `DAC_EN=1`.
+- `snd_sunxi_codec_init()` — `PA_MUTE=0` и **`PA_ENABLE=1`** (`SUNXI_ADC_ACTL` бит).
+- Т.е. и внешний PA (PC10/`gpio_pa_shutdown`), и внутренний PA кодека драйвер включает.
+- Полный дамп кодека в покое: `DPC=80000000 FIFOC=01601f00 DAC_ACTL=c7bfff3f
+  ADC_ACTL=0534817c` (бит6 `Playback Switch` в ACTL = 0; в игре бит6 = 1, ACTL=…7f).
+- Итог: со стороны софта всё включено → тишина в динамике указывает на
+  железо/конкретный регистровый бит выхода‑на‑динамик. Нужен дамп в момент игры + сверка
+  с known‑good, либо проверка обвязки усилителя динамика.
