@@ -1046,3 +1046,24 @@ userspace `/dev/pa_dev` не использует (только `plughw:0,0` + `
   `lakka-full.img`: в образе только `p1`+`p2`). При чистой прошивке конфиг создаётся заново →
   `audio_device=""` → RA снова встанет в `PREPARED` и звука не будет. Нужно либо вручную прописать
   `plughw:0,0`, либо **зашить это в `a13init`** (следующая задача сборки).
+
+---
+
+## Обновление 17 (2026-10-12) — чистка образа (только rgui)
+
+Убрано из SYSTEM неактуальное (аккуратно, только темы/онлайн):
+- `retroarch-assets/*` — оставлены только **`rgui`** (+ `fonts`); удалены `xmb`, `ozone`, `glui`,
+  `nxrgui`, `switch`, `FlatUX`, `Systematic`, `Automatic`, `wallpapers`, `branding`, `pkg`,
+  `sounds`, `ctr`, `menu_widgets`, `devtools`, `scripts`, `cfg`.
+- `usr/share/libretro-database` (cheats), `usr/share/common-shaders`, `usr/share/retroarch-overlays`.
+
+Результат:
+- sysroot `du` ≈ **1.14 ГБ → 220 МБ**; SYSTEM-squashfs **546 619 392 → 66 629 632 Б** (md5
+  `3c5b76a1…`); архив образа `.img.gz` **592 МБ → 112 655 950 Б**.
+- Занято на `p1` ≈ **148 МБ** (было 606).
+
+**Карта обновлена:** `E:\SYSTEM` = 66 629 632 Б. **Бэкап старого SYSTEM** сделан:
+`out/backup/SYSTEM.old-521MiB.md5-107654D110C1C1342BA27C2CD8A85380` (546 619 392 Б,
+md5 `107654d1…`).
+
+Релиз `v2026.10.10` перезалит (новый `.img.gz` 112 МБ + `.sha256`).
