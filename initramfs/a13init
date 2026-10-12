@@ -245,7 +245,7 @@ KO=/flash/g_acm_ms.ko
 if [ -f "$KO" ]; then
   case "$USB_MODE" in
     console) $BB insmod "$KO" use_ms=0 2>/dev/null && log "usb: console (ACM ttyGS0)" || log "usb: insmod failed" ;;
-    storage) $BB insmod "$KO" use_ms=1 file=/dev/mmcblk0 removable=0 2>/dev/null && log "usb: mass storage (/dev/mmcblk0)" || log "usb: insmod failed" ;;
+    storage) $BB insmod "$KO" use_ms=1 file=/dev/mmcblk0p3 removable=0 2>/dev/null && log "usb: mass storage (/dev/mmcblk0p3)" || log "usb: insmod failed" ;;
     off)     log "usb: off (gadget not loaded)" ;;
   esac
 fi
