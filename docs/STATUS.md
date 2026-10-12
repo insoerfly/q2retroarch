@@ -1067,3 +1067,23 @@ userspace `/dev/pa_dev` не использует (только `plughw:0,0` + `
 md5 `107654d1…`).
 
 Релиз `v2026.10.10` перезалит (новый `.img.gz` 112 МБ + `.sha256`).
+
+---
+
+## Обновление 18 (2026-10-12) — systemset читается init, логотип, шрифт, массасторедж
+
+- **`a13init` читает `/flash/systemset/*.conf`** (usb/log/logo/display/key/system/audio).
+  Парсер — чисто POSIX sh, устойчив к **CRLF** и лишним пробелам перед `=`. При некорректных
+  значениях — дефолты. Пишет диагностику `/flash/SYSSET.TXT`.
+  - Причина прошлых «конфы не работают»: файлы на карте были **CRLF** → значение `console\r`
+    не проходило валидацию → падало в дефолт. Исправлено.
+- **USB**: `usb_mode=console` (ACM ttyGS0) | `storage` (массасторедж, `file=/dev/mmcblk0`) | `off`.
+  Дефолт — storage.
+- **Логотип** (`logo.conf`): `logo_enable`, `hide_text`, `logo_file`, `logo_hold_ms`.
+  Пишется во все 3 fb‑буфера (fb 320×720), консольный текст на LCD скрывается (fbcon unbind +
+  printk quiet). Командная строка ядра: `console=ttyS0,115200 quiet loglevel=0 rdinit=/a13init`
+  (убран `console=tty0`).
+- **Логи** (`log.conf`): `log_enable` гейтит `RETRO.LOG`/`DMESG.txt`/`MIXER.txt`/`RA.LOG`.
+- **Русский шрифт 6×10**: `bitmap6x10_rus.bin` + патч RA (`rgui.c`, `bitmapfont_6x10.c`).
+- Все дефолты (storage / логи off / логотип on / кнопки+CPU+audio текущие) — и на карте, и в образе.
+- Образ/релиз обновлены (`.gz` 112 645 161 Б, sha256 `9e794de1…`), карта синхронизирована.

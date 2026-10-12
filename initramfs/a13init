@@ -13,9 +13,128 @@ say() { echo "A13: $*"; echo "A13: $*" >/dev/kmsg 2>/dev/null; }
 
 $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /flash 2>/tmp/me
 say "vfat rc=$?"
-LOG=/flash/RETRO.LOG
-{ : > "$LOG"; } 2>/dev/null || LOG=/tmp/RETRO.LOG
+
+# ===========================================================================
+#  systemset: user config (files on /flash/systemset/*.conf)
+#  Any missing/invalid value falls back to the DEFAULTS below:
+#    usb=storage, logs=off, boot logo=on, keys/cpu/audio = current.
+# ===========================================================================
+SYSDIR=/flash/systemset
+
+# read "key = value" from a conf file, ignoring comments; pure POSIX shell
+# (no sed/head/grep - the initramfs busybox may lack them)
+CR=$(printf '\r')
+conf_get() { # <file> <key> <default>
+  _f="$SYSDIR/$1"; _k="$2"; _d="$3"; _v=""
+  if [ -f "$_f" ]; then
+    while IFS= read -r _line; do
+      _line=${_line%$CR}
+      case "$_line" in \#*) continue ;; esac
+      _key=${_line%%=*}
+      _key=${_key%$CR}
+      while :; do
+        case "$_key" in
+          *" "|*"	") _key=${_key%?} ;;
+          *) break ;;
+        esac
+      done
+      if [ "$_key" = "$_k" ]; then
+        _val=${_line#*=}
+        _val=${_val# }
+        # strip trailing spaces/tabs/CR
+        while :; do
+          case "$_val" in
+            *" "|*"	"|*"$CR") _val=${_val%?} ;;
+            *) break ;;
+          esac
+        done
+        _val=${_val#\"}; _val=${_val%\"}
+        _v="$_val"; break
+      fi
+    done < "$_f"
+  fi
+  [ -n "$_v" ] || _v="$_d"
+  printf '%s' "$_v"
+}
+
+USB_MODE=$(conf_get usb.conf      usb_mode      storage)
+LOG_ENABLE=$(conf_get log.conf    log_enable    0)
+LOG_VERB=$(conf_get log.conf      log_verbosity 0)
+BOOT_DISPLAY=$(conf_get display.conf boot_display logo)
+KERNEL_QUIET=$(conf_get display.conf kernel_quiet 1)
+CPU_MHZ=$(conf_get system.conf    cpu_mhz       912)
+CPU_GOV=$(conf_get system.conf    cpu_gov       userspace)
+ZRAM_MB=$(conf_get system.conf    zram_mb       128)
+HOSTNAME=$(conf_get system.conf   hostname      q2)
+AUDIO_DEV=$(conf_get audio.conf   audio_device  "plughw:0,0")
+AUDIO_DRV=$(conf_get audio.conf   audio_driver  alsa)
+AUDIO_RATE=$(conf_get audio.conf  audio_rate    48000)
+LOGO_ENABLE=$(conf_get logo.conf  logo_enable   1)
+HIDE_TEXT=$(conf_get logo.conf    hide_text     1)
+LOGO_FILE=$(conf_get logo.conf    logo_file     /flash/logo.raw)
+LOGO_HOLD=$(conf_get logo.conf    logo_hold_ms  3000)
+
+# --- validate (invalid -> defaults) ---
+case "$USB_MODE" in console|storage|off) ;; *) USB_MODE=storage ;; esac
+case "$LOG_ENABLE" in 0|1) ;; *) LOG_ENABLE=0 ;; esac
+case "$LOG_VERB" in 0|1|2) ;; *) LOG_VERB=0 ;; esac
+case "$BOOT_DISPLAY" in logo|console|off) ;; *) BOOT_DISPLAY=logo ;; esac
+case "$KERNEL_QUIET" in 0|1) ;; *) KERNEL_QUIET=1 ;; esac
+case "$CPU_MHZ" in ''|*[!0-9]*) CPU_MHZ=912 ;; esac
+[ "$CPU_MHZ" -ge 144 ] && [ "$CPU_MHZ" -le 1104 ] || CPU_MHZ=912
+case "$CPU_GOV" in conservative|userspace) ;; *) CPU_GOV=userspace ;; esac
+case "$ZRAM_MB" in ''|*[!0-9]*) ZRAM_MB=128 ;; esac
+[ "$ZRAM_MB" -le 512 ] || ZRAM_MB=128
+case "$AUDIO_DRV" in alsa|oss|null) ;; *) AUDIO_DRV=alsa ;; esac
+case "$AUDIO_RATE" in ''|*[!0-9]*) AUDIO_RATE=48000 ;; esac
+case "$LOGO_ENABLE" in 0|1) ;; *) LOGO_ENABLE=1 ;; esac
+case "$HIDE_TEXT" in 0|1) ;; *) HIDE_TEXT=1 ;; esac
+case "$LOGO_HOLD" in ''|*[!0-9]*) LOGO_HOLD=3000 ;; esac
+[ "$LOGO_HOLD" -le 60000 ] || LOGO_HOLD=3000
+
+# diagnostic (always, so the user can verify what was applied)
+{ echo "systemset applied:"
+  echo "  usb_mode=$USB_MODE log_enable=$LOG_ENABLE log_verb=$LOG_VERB"
+  echo "  boot_display=$BOOT_DISPLAY kernel_quiet=$KERNEL_QUIET"
+  echo "  cpu_mhz=$CPU_MHZ cpu_gov=$CPU_GOV zram_mb=$ZRAM_MB hostname=$HOSTNAME"
+  echo "  audio_device=$AUDIO_DEV audio_driver=$AUDIO_DRV audio_rate=$AUDIO_RATE"
+} > /flash/SYSSET.TXT 2>/dev/null
+
+# logging
+if [ "$LOG_ENABLE" = 1 ]; then
+  LOG=/flash/RETRO.LOG
+  { : > "$LOG"; } 2>/dev/null || LOG=/tmp/RETRO.LOG
+else
+  LOG=/dev/null
+fi
 log() { echo "$@" >>"$LOG" 2>/dev/null; echo "$@" >/dev/kmsg 2>/dev/null; }
+
+# boot display: quiet console unless user asked for 'console'.
+# NOTE: do NOT close stdin here (the console shell needs it).
+if [ "$BOOT_DISPLAY" != console ]; then
+  exec >/dev/null 2>&1
+fi
+
+log "systemset: usb=$USB_MODE log=$LOG_ENABLE display=$BOOT_DISPLAY cpu=$CPU_MHZ zram=$ZRAM_MB host=$HOSTNAME audio=$AUDIO_DEV"
+
+# hide the kernel/fb console text on the LCD if requested (logo.conf hide_text)
+if [ "$HIDE_TEXT" = 1 ]; then
+  for v in /sys/class/vtconsole/vtcon*/bind; do
+    [ -w "$v" ] && echo 0 > "$v" 2>/dev/null
+  done
+  echo "0 0 0 0" > /proc/sys/kernel/printk 2>/dev/null
+fi
+
+# boot splash (logo.conf): write the logo into all 3 fb buffers and hold it.
+# fb virtual is 320x720 = 3x240 buffers (stride 1280).
+if [ "$LOGO_ENABLE" = 1 ] && [ -f "$LOGO_FILE" ] && [ -c /dev/fb0 ]; then
+  for s in 0 75 150; do
+    $BB dd if="$LOGO_FILE" of=/dev/fb0 bs=4096 seek=$s conv=notrunc 2>/dev/null
+  done
+  $BB sync 2>/dev/null
+  log "splash: logo shown (hold ${LOGO_HOLD}ms)"
+  [ "$LOGO_HOLD" -gt 0 ] && $BB sleep $((LOGO_HOLD / 1000))
+fi
 
 $BB mount -t squashfs -o ro,loop /flash/SYSTEM /newroot 2>/tmp/e
 log "SYSTEM rc=$?"
@@ -37,23 +156,24 @@ $BB mount -t sysfs sysfs /newroot/sys 2>/dev/null
 $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /newroot/flash 2>/dev/null
 $BB mount -t debugfs none /sys/kernel/debug 2>/dev/null
 
-# CPU: force max frequency. The kernel has only 'userspace'/'conservative'
-# governors; 'userspace' defaults to 384 MHz if nobody sets a speed -> the whole
-# system crawls (Sega/PSX/GBA "slow"). The Q2 FEX asks for 912 MHz; set it and
-# pin min=max so it stays there.
-for c in /sys/devices/system/cpu/cpu*/cpufreq; do
-  echo 912000 > "$c/scaling_max_freq" 2>/dev/null
-  echo 912000 > "$c/scaling_min_freq" 2>/dev/null
-  echo 912000 > "$c/scaling_setspeed" 2>/dev/null
-done
-log "cpu: freq set to 912MHz ($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null))"
+# hostname
+echo "$HOSTNAME" > /proc/sys/kernel/hostname 2>/dev/null
 
-# zram swap (compressed RAM; kernel 3.4 zram/zsmalloc ported to ARM)
-if [ -e /newroot/sys/block/zram0/disksize ]; then
-  echo $((128 * 1024 * 1024)) > /newroot/sys/block/zram0/disksize 2>/dev/null
+# CPU: force a sane frequency (userspace governor defaults to 384 MHz -> crawls).
+for c in /sys/devices/system/cpu/cpu*/cpufreq; do
+  [ -w "$c/scaling_governor" ] && echo "$CPU_GOV" > "$c/scaling_governor" 2>/dev/null
+  echo $((CPU_MHZ * 1000)) > "$c/scaling_max_freq" 2>/dev/null
+  echo $((CPU_MHZ * 1000)) > "$c/scaling_min_freq" 2>/dev/null
+  echo $((CPU_MHZ * 1000)) > "$c/scaling_setspeed" 2>/dev/null
+done
+log "cpu: freq set to ${CPU_MHZ}MHz ($(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null))"
+
+# zram swap
+if [ "$ZRAM_MB" -gt 0 ] && [ -e /newroot/sys/block/zram0/disksize ]; then
+  echo $((ZRAM_MB * 1024 * 1024)) > /newroot/sys/block/zram0/disksize 2>/dev/null
   $BB chroot /newroot /usr/sbin/mkswap /dev/zram0 >/dev/null 2>&1
   if $BB chroot /newroot /usr/sbin/swapon /dev/zram0 >/dev/null 2>&1; then
-    log "zram0 swap on (128M)"
+    log "zram0 swap on (${ZRAM_MB}M)"
   else
     log "zram0 swap FAILED"
   fi
@@ -75,7 +195,6 @@ if [ -z "$STORAGE" ]; then
   TOTAL=$($BB cat /sys/block/mmcblk0/size 2>/dev/null)
   P2S=$($BB cat /sys/block/mmcblk0/mmcblk0p2/start 2>/dev/null)
   P2N=$($BB cat /sys/block/mmcblk0/mmcblk0p2/size 2>/dev/null)
-  # only auto-create once, and only strictly AFTER p2 (never near the bootloader area)
   if [ -n "$TOTAL" ] && [ -n "$P2S" ] && [ -n "$P2N" ] && [ "$P2S" -gt 2048 ] && [ ! -f /flash/.expanding ]; then
     START=$((P2S + P2N + 4096)); LAST=$((TOTAL - 1))
     log "creating storage partition sectors $START..$LAST"
@@ -97,9 +216,8 @@ $BB mkdir -p /newroot/storage/.config/retroarch /newroot/storage/roms /newroot/s
 $BB mkdir -p /newroot/tmp/assets /newroot/tmp/cores /newroot/tmp/system /newroot/tmp/joypads /newroot/tmp/overlays /newroot/tmp/shaders /newroot/tmp/database
 $BB mkdir -p /newroot/run/libreelec /newroot/retroarch /newroot/var/lib /newroot/var/log
 
-# audio: unmute + max all mixer controls (sunxi-CODEC needs userspace init),
-# and dump the mixer state to /flash/MIXER.txt for diagnostics
-ALOG=/flash/MIXER.txt
+# audio: unmute + max all mixer controls (sunxi-CODEC needs userspace init)
+if [ "$LOG_ENABLE" = 1 ]; then ALOG=/flash/MIXER.txt; else ALOG=/dev/null; fi
 if [ -x /newroot/usr/bin/amixer ]; then
   {
     echo "== /proc/asound/cards =="; $BB cat /newroot/proc/asound/cards
@@ -121,34 +239,35 @@ else
   log "audio: amixer not found in SYSTEM"
 fi
 
-# USB composite gadget: serial console (ttyGS0) + SD mass storage (rw)
+# USB gadget mode (console OR mass storage, never both)
 KO=/flash/g_acm_ms.ko
 [ -f "$KO" ] || KO=/g_acm_ms.ko
 if [ -f "$KO" ]; then
-  $BB insmod "$KO" use_ms=0 2>/dev/null \
-    && log "usb: g_acm_ms ACM-only (serial console ttyGS0)" \
-    || log "usb: g_acm_ms insmod failed"
+  case "$USB_MODE" in
+    console) $BB insmod "$KO" use_ms=0 2>/dev/null && log "usb: console (ACM ttyGS0)" || log "usb: insmod failed" ;;
+    storage) $BB insmod "$KO" use_ms=1 file=/dev/mmcblk0 removable=0 2>/dev/null && log "usb: mass storage (/dev/mmcblk0)" || log "usb: insmod failed" ;;
+    off)     log "usb: off (gadget not loaded)" ;;
+  esac
 fi
-if [ -c /dev/ttyGS0 ]; then
+if [ "$USB_MODE" = console ] && [ -c /dev/ttyGS0 ]; then
   log "usb: ttyGS0 present -> serial console shell"
   ( while true; do echo "A13CONSOLE READY @$(date +%s), type a command:" > /dev/ttyGS0 2>/dev/null; \
       $BB chroot /newroot /bin/sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1 || \
       $BB sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1; $BB sleep 1; done ) &
-else
-  log "usb: ttyGS0 MISSING"
 fi
 
 CFG=/newroot/storage/.config/retroarch/retroarch.cfg
 if [ ! -f "$CFG" ]; then
-  log "first run: creating $CFG (clean config, no defaults to avoid duplicate keys)"
+  log "first run: creating $CFG"
   $BB cat > "$CFG" <<'OV'
 video_driver = "sunxi"
 video_threaded = "false"
 input_driver = "udev"
 input_joypad_driver = "linuxraw"
 audio_driver = "alsa"
+audio_device = "plughw:0,0"
 bluetooth_driver = "null"
-menu_driver = "xmb"
+menu_driver = "rgui"
 video_fullscreen = true
 config_save_on_exit = true
 libretro_directory = "/usr/lib/libretro"
@@ -180,6 +299,26 @@ input_player1_right_btn = "12"
 OV
 fi
 
+# apply audio + logging from systemset into retroarch.cfg
+if [ -f "$CFG" ]; then
+  $BB sed -i "s|^audio_driver = .*|audio_driver = \"$AUDIO_DRV\"|"  "$CFG" 2>/dev/null
+  $BB sed -i "s|^audio_device = .*|audio_device = \"$AUDIO_DEV\"|"  "$CFG" 2>/dev/null
+  $BB sed -i "s|^audio_out_rate = .*|audio_out_rate = \"$AUDIO_RATE\"|" "$CFG" 2>/dev/null
+  if [ "$LOG_ENABLE" = 1 ]; then
+    $BB sed -i 's|^log_to_file = .*|log_to_file = "true"|'  "$CFG" 2>/dev/null
+    grep -q '^log_to_file' "$CFG" || echo 'log_to_file = "true"' >> "$CFG"
+    $BB sed -i "s|^log_verbosity = .*|log_verbosity = \"$LOG_VERB\"|" "$CFG" 2>/dev/null
+  else
+    $BB sed -i 's|^log_to_file = .*|log_to_file = "false"|' "$CFG" 2>/dev/null
+    grep -q '^log_to_file' "$CFG" || echo 'log_to_file = "false"' >> "$CFG"
+  fi
+fi
+
+# key mapping: the a13keys pin layout is compiled in the kernel driver.
+# key.conf is parsed for diagnostics; changing pins requires a kernel rebuild.
+KEYMAP=$(conf_get key.conf menu E1)
+log "key: key.conf menu=$KEYMAP (layout is compiled in a13keys) "
+
 MODE=$($BB cat /flash/MODE 2>/dev/null)
 case "$MODE" in
   *scan*)
@@ -188,7 +327,7 @@ case "$MODE" in
     while true; do $BB sleep 3600; done
     ;;
   *audio*)
-    log "MODE=audio -> speaker-test (2s sine)"
+    log "MODE=audio -> speaker-test"
     $BB chroot /newroot /usr/bin/speaker-test -D default -c 2 -t sine -l 1 > /flash/SPK.LOG 2>&1
     log "speaker-test rc=$?"
     $BB dmesg > /flash/DMESG.txt 2>/dev/null
@@ -219,13 +358,19 @@ HOME=/storage
 LD_LIBRARY_PATH=/usr/lib:/tmp/cores
 PATH=/usr/bin:/bin:/sbin:/usr/sbin
 export HOME LD_LIBRARY_PATH PATH
-# optional SIGSEGV backtrace helper (card /flash/crashtrace.so)
 [ -f /newroot/flash/crashtrace.so ] && export LD_PRELOAD=/flash/crashtrace.so
 
+if [ "$LOG_ENABLE" = 1 ]; then
 ( while true; do $BB sleep 3; $BB dmesg > /flash/DMESG.txt 2>/dev/null; $BB sync 2>/dev/null; done ) &
+fi
 
+if [ "$LOG_ENABLE" = 1 ] && [ "$BOOT_DISPLAY" = console ]; then
+  RAOUT=/newroot/flash/RA.LOG
+else
+  RAOUT=/dev/null
+fi
 log "=== launch $RA ==="
-$BB chroot /newroot "$RA" --verbose > /newroot/flash/RA.LOG 2>&1 &
+$BB chroot /newroot "$RA" --verbose > "$RAOUT" 2>&1 &
 CH=$!
 wait $CH
 log "retroarch exited rc=$?"
