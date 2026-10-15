@@ -9,7 +9,7 @@ $BB mount -t proc proc /proc 2>/dev/null
 $BB mount -t sysfs sysfs /sys 2>/dev/null
 [ -c /dev/console ] && exec >/dev/console 2>&1 </dev/console
 
-say() { echo "A13: $*"; echo "A13: $*" >/dev/kmsg 2>/dev/null; }
+say() { echo "A13: $*"; echo "A13: $*" >/dev/kmsg 2>/dev/null; echo "A13: $*" >/dev/tty0 2>/dev/null; }
 
 $BB mount -t vfat -o rw,uid=0,gid=0,umask=000 /dev/mmcblk0p1 /flash 2>/tmp/me
 say "vfat rc=$?"
@@ -107,11 +107,15 @@ if [ "$LOG_ENABLE" = 1 ]; then
 else
   LOG=/dev/null
 fi
-log() { echo "$@" >>"$LOG" 2>/dev/null; echo "$@" >/dev/kmsg 2>/dev/null; }
+log() { echo "$@" >>"$LOG" 2>/dev/null; echo "$@" >/dev/kmsg 2>/dev/null; echo "$@" >/dev/tty0 2>/dev/null; }
 
 # boot display: quiet console unless user asked for 'console'.
 # NOTE: do NOT close stdin here (the console shell needs it).
-if [ "$BOOT_DISPLAY" != console ]; then
+if [ "$BOOT_DISPLAY" = console ]; then
+  # show the a13init/kernel log on the LCD (fb console): raise console loglevel.
+  echo 8 > /proc/sys/kernel/printk 2>/dev/null
+  echo "A13: boot_display=console (LCD text console)" > /dev/tty0 2>/dev/null
+else
   exec >/dev/null 2>&1
 fi
 
