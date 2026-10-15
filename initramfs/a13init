@@ -117,8 +117,9 @@ fi
 
 log "systemset: usb=$USB_MODE log=$LOG_ENABLE display=$BOOT_DISPLAY cpu=$CPU_MHZ zram=$ZRAM_MB host=$HOSTNAME audio=$AUDIO_DEV"
 
-# hide the kernel/fb console text on the LCD if requested (logo.conf hide_text)
-if [ "$HIDE_TEXT" = 1 ]; then
+# hide the kernel/fb console text on the LCD if requested (logo.conf hide_text).
+# boot_display=console means the user WANTS the text console -> never hide it.
+if [ "$HIDE_TEXT" = 1 ] && [ "$BOOT_DISPLAY" != console ]; then
   for v in /sys/class/vtconsole/vtcon*/bind; do
     [ -w "$v" ] && echo 0 > "$v" 2>/dev/null
   done
@@ -127,7 +128,8 @@ fi
 
 # boot splash (logo.conf): write the logo into all 3 fb buffers and hold it.
 # fb virtual is 320x720 = 3x240 buffers (stride 1280).
-if [ "$LOGO_ENABLE" = 1 ] && [ -f "$LOGO_FILE" ] && [ -c /dev/fb0 ]; then
+# Only for boot_display=logo; 'console' shows text, 'off' shows neither.
+if [ "$BOOT_DISPLAY" = logo ] && [ "$LOGO_ENABLE" = 1 ] && [ -f "$LOGO_FILE" ] && [ -c /dev/fb0 ]; then
   for s in 0 75 150; do
     $BB dd if="$LOGO_FILE" of=/dev/fb0 bs=4096 seek=$s conv=notrunc 2>/dev/null
   done
