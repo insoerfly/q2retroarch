@@ -1,4 +1,0 @@
-# ported launcher binaries (built by build.sh)
-launcher.arm
-launcher.arm.stripped
-*.o
