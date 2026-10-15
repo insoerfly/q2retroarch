@@ -75,7 +75,7 @@ HIDE_TEXT=$(conf_get logo.conf    hide_text     1)
 LOGO_FILE=$(conf_get logo.conf     logo_file     /flash/logo.raw)
 LOGO_HOLD=$(conf_get logo.conf     logo_hold_ms  3000)
 LAUNCH_MODE=$(conf_get launcher.conf launcher_mode retroarch)
-LAUNCH_PATH=$(conf_get launcher.conf launcher_path /flash/launcher)
+LAUNCH_PATH=$(conf_get launcher.conf launcher_path /flash/launcher/launcher)
 LAUNCH_ARGS=$(conf_get launcher.conf launcher_args "")
 
 # --- validate (invalid -> defaults) ---
@@ -403,21 +403,21 @@ launch_custom() {
 
 LAUNCHED=0
 if [ "$LAUNCH_MODE" = custom ]; then
-  if [ -x "$LAUNCH_PATH" ] || [ -x "/newroot$LAUNCH_PATH" ]; then
+  if [ -f "$LAUNCH_PATH" ] && [ -x "$LAUNCH_PATH" ]; then
     LAUNCHED=1
     launch_custom
     wait $LA_PID
-    log "custom launcher exited rc=$?"
+    log "custom launcher exited rc=$? -> falling back to RetroArch"
   else
     log "launcher_mode=custom but '$LAUNCH_PATH' not executable -> fallback to RetroArch"
   fi
 fi
+[ "$LAUNCHED" = 1 ] || log "(launcher disabled)"
 
-if [ "$LAUNCHED" != 1 ]; then
-  launch_ra
-  wait $RA_PID
-  log "retroarch exited rc=$?"
-fi
+# RetroArch always runs after the launcher exits, so the device is never stuck.
+launch_ra
+wait $RA_PID
+log "retroarch exited rc=$?"
 
 $BB sync 2>/dev/null
 while true; do $BB sleep 3600; done
