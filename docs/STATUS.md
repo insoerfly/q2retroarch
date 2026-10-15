@@ -1155,3 +1155,23 @@ systemset‑настройки (CRLF‑фикс), логотип «A13 Lakka» +
   пинов PB/PC/PG и регистров кодека в покое и во время воспроизведения).
 - **Итог: динамик работает** (подтверждено пользователем). FEX залит на карту, в
   репозиторий и в образ.
+
+---
+
+## Обновление 23 (2026-10-16) — фикс вылета RA (nestopia) + консоль на экране
+
+- **Вылет RetroArch `rc=139` (SIGSEGV) при переключении ядра** (fceumm RGB565 →
+  nestopia XRGB8888 → чёрный экран). Причина: RA после выгрузки видео-драйвера
+  вызывает poke-функцию с `data=NULL`, а `sunxi_set_aspect_ratio` не проверяла NULL →
+  доступ к `NULL+0x7c`. Найдено логгером крашей (`crashtrace.so` → `/flash/CRASH.TXT`)
+  и подтверждено gdb. Добавлены guard-ы в `sunxi_set_aspect_ratio`,
+  `sunxi_set_texture_frame`, `sunxi_set_texture_enable` (`retroarch/sunxi_gfx.c`).
+  **nestopia и fceumm теперь работают** (выход/возврат в меню, без вылета).
+- **`boot_display` больше не конфликтует с выводом:**
+  - `console` — на LCD показывается TEXT-консоль: `a13init` пишет лог ещё и в
+    `/dev/tty0` (раньше — только в `/dev/console` = ttyS0, поэтому на экране пусто) и
+    поднимает `printk`;
+  - `logo` / `off` — весь вывод глушится (текст не бежит поверх логотипа); логотип
+    рисуется только при `boot_display=logo`.
+- Диагностика крашей: `crashtrace.so` (a13init подгружает через `LD_PRELOAD`, пишет
+  бэктрейс в `/flash/CRASH.TXT`).
