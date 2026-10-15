@@ -1,0 +1,4 @@
+# Line endings: the initramfs init script MUST be LF.
+# CRLF (Windows) breaks the shell -> the device hangs at boot (no output).
+initramfs/a13init text eol=lf
+*.sh text eol=lf
