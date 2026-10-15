@@ -997,6 +997,8 @@ static void sunxi_set_texture_enable(void *data, bool state, bool full_screen)
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
    /* A13FIX: do NOT join/create the vsync thread here; it deadlocks when the
     * menu activates. Keep the thread alive for the driver's lifetime. */
+   if (!_dispvars)
+      return;
    _dispvars->menu_active = state;
 }
 
@@ -1004,6 +1006,9 @@ static void sunxi_set_texture_frame(void *data, const void *frame, bool rgb32,
       unsigned width, unsigned height, float alpha)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
+
+   if (!_dispvars)
+      return;
 
    if (_dispvars->menu_active)
    {
@@ -1043,7 +1048,15 @@ static void sunxi_set_texture_frame(void *data, const void *frame, bool rgb32,
 static void sunxi_set_aspect_ratio(void *data, unsigned aspect_ratio_idx)
 {
    struct sunxi_video *_dispvars = (struct sunxi_video*)data;
-   float              new_aspect = aspectratio_lut[aspect_ratio_idx].value;
+   float              new_aspect;
+
+   /* A13FIX: RetroArch may call the poke interface with a NULL driver data
+    * pointer (e.g. right after the video driver was freed on core switch).
+    * Dereferencing it crashes. Guard. */
+   if (!_dispvars)
+      return;
+
+   new_aspect = aspectratio_lut[aspect_ratio_idx].value;
 
    if (new_aspect != _dispvars->aspect_ratio)
    {
