@@ -1193,27 +1193,3 @@ systemset‑настройки (CRLF‑фикс), логотип «A13 Lakka» +
   (`boot_display`/консоль), `1785bb4` (доки 23).
 - **Остаётся на будущее:** PMU AXP209 (`failed reading at 0x03`, `error -70` — питание/
   батарея; на звук не влияет).
-
----
-
-## Обновление 25 (2026-10-16) — выбор: RetroArch или свой лаунчер (`launcher.conf`)
-
-- Добавлен **`/flash/systemset/launcher.conf`**:
-  ```
-  launcher_mode = retroarch   # по умолчанию
-  launcher_path = /flash/launcher
-  launcher_args =
-  ```
-- `a13init` читает его: при `launcher_mode=custom` запускает `chroot /newroot
-  <launcher_path>` (лаунчер сам запускает игры через `retroarch -L <core> <rom>`);
-  если файла нет/не исполняемый — безопасный откат на RetroArch. Логи лаунчера —
-  `/flash/LAUNCHER.LOG` (при `log_enable=1`). Строка про лаунчер добавлена в
-  `SYSSET.TXT` и `RETRO.LOG`.
-- **Порт лаунчера:** исходники MP5 X7/ATJ2273S-лаунчера скопированы в
-  **`launcher/`** репозитория (оригинал `mp5x7\mylauncher` не тронут). Напрямую запустить
-  нельзя (MIPS + вендорские `fusion/gui/applib`) — путь порта: кастомный menu driver
-  RA или отдельный fb-лаунчер; ассеты (`xmb_assets.h`, `assets/ra`, шрифты, обложки)
-  переиспользуются.
-- Ядро пересобрано (initramfs/`a13init`). Образ и релиз перезалиты:
-  - `lakka-full.img.gz` = **112 647 156 Б**; sha256: img `960f9e67…`, gz `d899aa01…`.
-- Коммит: `… launcher.conf + custom launch branch`.

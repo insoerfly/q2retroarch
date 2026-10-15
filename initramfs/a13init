@@ -72,11 +72,8 @@ AUDIO_DRV=$(conf_get audio.conf   audio_driver  alsa)
 AUDIO_RATE=$(conf_get audio.conf  audio_rate    48000)
 LOGO_ENABLE=$(conf_get logo.conf  logo_enable   1)
 HIDE_TEXT=$(conf_get logo.conf    hide_text     1)
-LOGO_FILE=$(conf_get logo.conf     logo_file     /flash/logo.raw)
-LOGO_HOLD=$(conf_get logo.conf     logo_hold_ms  3000)
-LAUNCH_MODE=$(conf_get launcher.conf launcher_mode retroarch)
-LAUNCH_PATH=$(conf_get launcher.conf launcher_path /flash/launcher)
-LAUNCH_ARGS=$(conf_get launcher.conf launcher_args "")
+LOGO_FILE=$(conf_get logo.conf    logo_file     /flash/logo.raw)
+LOGO_HOLD=$(conf_get logo.conf    logo_hold_ms  3000)
 
 # --- validate (invalid -> defaults) ---
 case "$USB_MODE" in console|off) ;; *) USB_MODE=console ;; esac
@@ -95,8 +92,6 @@ case "$LOGO_ENABLE" in 0|1) ;; *) LOGO_ENABLE=1 ;; esac
 case "$HIDE_TEXT" in 0|1) ;; *) HIDE_TEXT=1 ;; esac
 case "$LOGO_HOLD" in ''|*[!0-9]*) LOGO_HOLD=3000 ;; esac
 [ "$LOGO_HOLD" -le 60000 ] || LOGO_HOLD=3000
-case "$LAUNCH_MODE" in retroarch|custom) ;; *) LAUNCH_MODE=retroarch ;; esac
-[ -n "$LAUNCH_PATH" ] || LAUNCH_PATH=/flash/launcher
 
 # diagnostic (always, so the user can verify what was applied)
 { echo "systemset applied:"
@@ -104,7 +99,6 @@ case "$LAUNCH_MODE" in retroarch|custom) ;; *) LAUNCH_MODE=retroarch ;; esac
   echo "  boot_display=$BOOT_DISPLAY kernel_quiet=$KERNEL_QUIET"
   echo "  cpu_mhz=$CPU_MHZ cpu_gov=$CPU_GOV zram_mb=$ZRAM_MB hostname=$HOSTNAME"
   echo "  audio_device=$AUDIO_DEV audio_driver=$AUDIO_DRV audio_rate=$AUDIO_RATE"
-  echo "  launcher_mode=$LAUNCH_MODE launcher_path=$LAUNCH_PATH launcher_args=$LAUNCH_ARGS"
 } > /flash/SYSSET.TXT 2>/dev/null
 
 # logging
@@ -129,7 +123,7 @@ else
   echo "0 0 0 0" > /proc/sys/kernel/printk 2>/dev/null
 fi
 
-log "systemset: usb=$USB_MODE log=$LOG_ENABLE display=$BOOT_DISPLAY cpu=$CPU_MHZ zram=$ZRAM_MB host=$HOSTNAME audio=$AUDIO_DEV launcher=$LAUNCH_MODE"
+log "systemset: usb=$USB_MODE log=$LOG_ENABLE display=$BOOT_DISPLAY cpu=$CPU_MHZ zram=$ZRAM_MB host=$HOSTNAME audio=$AUDIO_DEV"
 
 # hide the kernel/fb console text on the LCD if requested (logo.conf hide_text).
 # boot_display=console means the user WANTS the text console -> never hide it.
@@ -391,33 +385,9 @@ launch_ra() {
     $BB chroot /newroot "$RA" --verbose > "$RAOUT" 2>&1 &
   RA_PID=$!
 }
+launch_ra
 
-# launcher.conf: start our own launcher instead of RetroArch (it launches RA itself).
-if [ "$LOG_ENABLE" = 1 ]; then LAOUT=/newroot/flash/LAUNCHER.LOG; else LAOUT=/dev/null; fi
-launch_custom() {
-  log "=== launch custom launcher $LAUNCH_PATH $LAUNCH_ARGS ==="
-  HOME=/storage LD_LIBRARY_PATH=/usr/lib:/tmp/cores PATH=/usr/bin:/bin:/sbin:/usr/sbin \
-    $BB chroot /newroot "$LAUNCH_PATH" $LAUNCH_ARGS > "$LAOUT" 2>&1 &
-  LA_PID=$!
-}
-
-LAUNCHED=0
-if [ "$LAUNCH_MODE" = custom ]; then
-  if [ -x "$LAUNCH_PATH" ] || [ -x "/newroot$LAUNCH_PATH" ]; then
-    LAUNCHED=1
-    launch_custom
-    wait $LA_PID
-    log "custom launcher exited rc=$?"
-  else
-    log "launcher_mode=custom but '$LAUNCH_PATH' not executable -> fallback to RetroArch"
-  fi
-fi
-
-if [ "$LAUNCHED" != 1 ]; then
-  launch_ra
-  wait $RA_PID
-  log "retroarch exited rc=$?"
-fi
-
+wait $RA_PID
+log "retroarch exited rc=$?"
 $BB sync 2>/dev/null
 while true; do $BB sleep 3600; done
