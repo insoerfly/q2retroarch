@@ -1122,3 +1122,16 @@ systemset‑настройки (CRLF‑фикс), логотип «A13 Lakka» +
   DRM/KMS в BSP‑ядре). В ядре fbcon есть (`CONFIG_FRAMEBUFFER_CONSOLE=y`). Возврат — по `docs/J2ME.md`.
 - Карта почищена: удалены `E:\j2me`, `keycombo`, `g_mass_storage.ko`, `logo_pc.raw` и отладочные
   логи. Ядро `1A028B1B…`.
+
+---
+
+## Обновление 21 (2026-10-15) — перезалив образа и релиза, карта синхронизирована
+
+- В образ `lakka-full.img` влито актуальное: `KERNEL` + `res/DATA01` (ядро 912 МГц), `/retroarch`
+  (откаченные правки меню), `/systemset/*` (`usb_mode=console|off`, логотип on, логи off) и
+  `logo.raw`. Удалены устаревшие `logo_pc.raw`, `g_mass_storage.ko`, `keycombo`, `/j2me`.
+- Свободное место FAT занулено, образ пережат: `.img.gz` = **112 648 513 Б**.
+- Релиз [`v2026.10.10`](https://github.com/insoerfly/q2retroarch/releases/tag/v2026.10.10)
+  перезалит (`--clobber`): `lakka-full.img.gz` + `lakka-full.img.sha256`; заголовок/описание
+  обновлены (дефолт `usb_mode=console`, массасторедж и J2ME убраны, статус звука).
+  - sha256: img `87618187…`, gz `af0396b8…`.
